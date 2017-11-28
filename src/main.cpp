@@ -242,8 +242,16 @@ int main() {
           	vector<double> next_x_vals;
           	vector<double> next_y_vals;
 
+            // TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+            double inc = 0.4;
+            double cos_yaw = cos(deg2rad(car_yaw));
+            double sin_yaw = sin(deg2rad(car_yaw));
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+            for (auto i = 1; i <= 50; i++) {
+                // x = initial_x  + r * cos(theta), y = initial_y + r * sin(q)
+                auto x = car_x + inc * i *
+            }
+
           	msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
