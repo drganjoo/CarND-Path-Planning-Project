@@ -11,17 +11,23 @@
 #include "spline.h"
 #include "CarDriver.h"
 #include "WorldMap.h"
+#include <thread>
 
 using namespace std;
 
 // for convenience
 using json = nlohmann::json;
 
+// global variables
+uWS::Hub gh;
+thread gh_thread;
+uWS::WebSocket<uWS::SERVER> gh_socket;
+
+void SendDebugValues(const CarDriver &driver);
+
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
-
 double deg2rad(double x) { return x * pi() / 180; }
-
 double rad2deg(double x) { return x * 180 / pi(); }
 
 // Checks if the SocketIO event has JSON data.
@@ -86,19 +92,20 @@ int NextWaypoint(double x, double y, double theta, const vector<double> &maps_x,
 }
 
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta, const vector<double> &maps_x, const vector<double> &maps_y) {
-    int next_wp = NextWaypoint(x, y, theta, maps_x, maps_y);
+vector<double> getFrenet(double x, double y, double theta) {
+    WorldMap *map = WorldMap::GetInstance();
+    int next_wp = NextWaypoint(x, y, theta, map->map_waypoints_x, map->map_waypoints_y);
 
     unsigned long prev_wp;
     prev_wp = next_wp - 1;
     if (next_wp == 0) {
-        prev_wp = maps_x.size() - 1;
+        prev_wp = map->map_waypoints_x.size() - 1;
     }
 
-    double n_x = maps_x[next_wp] - maps_x[prev_wp];
-    double n_y = maps_y[next_wp] - maps_y[prev_wp];
-    double x_x = x - maps_x[prev_wp];
-    double x_y = y - maps_y[prev_wp];
+    double n_x = map->map_waypoints_x[next_wp] - map->map_waypoints_x[prev_wp];
+    double n_y = map->map_waypoints_y[next_wp] - map->map_waypoints_y[prev_wp];
+    double x_x = x - map->map_waypoints_x[prev_wp];
+    double x_y = y - map->map_waypoints_y[prev_wp];
 
     // find the projection of x onto n
     double proj_norm = (x_x * n_x + x_y * n_y) / (n_x * n_x + n_y * n_y);
@@ -109,8 +116,8 @@ vector<double> getFrenet(double x, double y, double theta, const vector<double> 
 
     //see if d value is positive or negative by comparing it to a center point
 
-    double center_x = 1000 - maps_x[prev_wp];
-    double center_y = 2000 - maps_y[prev_wp];
+    double center_x = 1000 - map->map_waypoints_x[prev_wp];
+    double center_y = 2000 - map->map_waypoints_y[prev_wp];
     double centerToPos = distance(center_x, center_y, x_x, x_y);
     double centerToRef = distance(center_x, center_y, proj_x, proj_y);
 
@@ -121,19 +128,82 @@ vector<double> getFrenet(double x, double y, double theta, const vector<double> 
     // calculate s value
     double frenet_s = 0;
     for (int i = 0; i < prev_wp; i++) {
-        frenet_s += distance(maps_x[i], maps_y[i], maps_x[i + 1], maps_y[i + 1]);
+        frenet_s += distance(map->map_waypoints_x[i], map->map_waypoints_y[i], map->map_waypoints_x[i + 1], map->map_waypoints_y[i + 1]);
     }
 
     frenet_s += distance(0, 0, proj_x, proj_y);
 
     return {frenet_s, frenet_d};
+}
 
+void StartGraphThread() {
+    gh.onConnection([](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
+        std::cout << "Graph Hub Connected!!!" << std::endl;
+        WorldMap *map = WorldMap::GetInstance();
+
+        json msgJson;
+
+        msgJson["type"] = "worldmap";
+        msgJson["worldmap_x"] = map->map_waypoints_x;
+        msgJson["worldmap_y"] = map->map_waypoints_y;
+
+        auto msg = msgJson.dump();
+        ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+
+#ifdef _SEND_DUMMY
+        // for the time being just sent the last recorded list of points
+        ifstream dummy("output.json");
+        if (dummy) {
+//            json records;
+//            dummy >> records;
+//            for (auto &r : records) {
+//                string msg = r.dump();
+//                ws.send(msg.c_str(), msg.length(), uWS::OpCode::TEXT);
+//            }
+            json r;
+            dummy >> r;
+            auto msg = r.dump();
+            ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+
+            dummy.close();
+        }
+#endif
+
+        cout << "Worldmap sent" << endl;
+        gh_socket = ws;
+    });
+
+
+    gh.onDisconnection([](uWS::WebSocket<uWS::SERVER> ws, int code,
+                           char *message, size_t length) {
+        std::cout << "Graph Hub Disconnected" << std::endl;
+    });
+
+    if (gh.listen(4568)) {
+        cout << "Listening on port 4568" << endl;
+
+        gh_thread = thread([](){
+            gh.run();
+        });
+    } else {
+        cerr << "Could not start graph listener" << endl;
+    }
+}
+
+string GetLogFilename() {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %X") << ".log";
+    return ss.str();
 }
 
 int main() {
     uWS::Hub h;
 
-    // Load up map values for waypoint's x,y,s and d normalized normal vectors
+    string log_filename = GetLogFilename();
+    ofstream log(log_filename);
 
     // Waypoint map to read from
     string map_file = "../data/highway_map.csv";
@@ -144,15 +214,16 @@ int main() {
         return -1;
     }
 
+    StartGraphThread();
 
     // The max s value before wrapping around the track back to 0
     double max_s = 6945.554;
 
     CarDriver driver;
     driver.set_ideal_speed(49.0);
-    driver.set_lane(1);
+    driver.set_desired_lane(1);
 
-    h.onMessage([&driver](
+    h.onMessage([&driver, &log](
             uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
             uWS::OpCode opCode) {
         // "42" at the start of the message means there's a websocket message event.
@@ -170,38 +241,21 @@ int main() {
                 string event = j[0].get<string>();
 
                 if (event == "telemetry") {
-                    // j[1] is the data JSON object
 
                     driver.UpdateModel(j[1]);
-
-                    // Previous path data given to the Planner
-                    auto previous_path_x = j[1]["previous_path_x"];
-                    auto previous_path_y = j[1]["previous_path_y"];
-
-
-                    if (previous_path_x.size() > 1) {
-                        cout << previous_path_x.size() << endl;
-                    }
-
-                    // Previous path's end s and d values
-                    double end_path_s = j[1]["end_path_s"];
-                    double end_path_d = j[1]["end_path_d"];
-
-                    // Sensor Fusion Data, a list of all other cars on the same side of the road.
-                    auto sensor_fusion = j[1]["sensor_fusion"];
-
-                    json msgJson;
-
                     auto path = driver.GetPath();
 
+                    SendDebugValues(driver);
+
+                    // response to the simulator
+                    json msgJson;
                     msgJson["next_x"] = path[0];
                     msgJson["next_y"] = path[1];
 
                     auto msg = "42[\"control\"," + msgJson.dump() + "]";
-
-                    //this_thread::sleep_for(chrono::milliseconds(1000));
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
+                    log << j << endl;
                 }
             } else {
                 // Manual driving
@@ -243,4 +297,22 @@ int main() {
         return -1;
     }
     h.run();
+}
+
+void SendDebugValues(const CarDriver &driver) {// debug values
+    // save all debug packages in a file
+    ofstream output("output.json");
+    if (output) {
+        //json msg = driver.debug_packets_;
+        json msg = *driver.last_debug_;
+        output << setw(4) << msg << endl;
+        output.close();
+    }
+
+    if (gh_socket.getPollHandle()) {
+        json debug = *driver.last_debug_;
+
+        auto debug_str = debug.dump();
+        gh_socket.send(debug_str.data(), debug_str.length(), uWS::TEXT);
+    }
 }
