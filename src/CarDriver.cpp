@@ -59,8 +59,8 @@ void CarDriver::UpdateModel(json &j) {
     Process();
 
     last_debug_->sensor_fusion = sensor_fusion_;
-    last_debug_->desired_speed_mph = desired_speed_mph;
-    last_debug_->desired_lane_no = desired_lane_no;
+    last_debug_->desired_speed_mph = desired_speed_mph_;
+    last_debug_->desired_lane_no = desired_lane_no_;
 
 //    debug_packets_.push_back(last_debug_);
 }
@@ -70,10 +70,10 @@ void CarDriver::Process() {
     next_x_vals_.clear();
     next_y_vals_.clear();
 
-    cout << "-------------------- Process " << prev_size << ", " << speed_mph_to_mtr_per_sec(model_->speed_mph) * 0.02
-         << " mp20 --------------------" << endl;
+    cout << "-------------------- Process " << prev_size << ", " << model_->speed_mph
+         << " mph --------------------" << endl;
 
-//    model_.desired_speed_mph = get_ideal_speed();
+//    model_.desired_speed_mph_ = get_ideal_speed();
 
 //    for (auto &constraint : constraints_) {
 //        constraint.Apply(&model_);
@@ -87,7 +87,6 @@ void CarDriver::Process() {
 
     // add previous points to the next x/y to keep some continuity and minimize
     // jerk
-    double speed_cur_mp20;
 
     for (int i = 0; i < prev_size; i++) {
         double prev_x = previous_path_x_[i];
@@ -99,40 +98,46 @@ void CarDriver::Process() {
         last_debug_->previous_pts.push_back(CartesianPoint(prev_x, prev_y));
     }
 
+    double speed_cur_mph;
+
     if (prev_size > 1) {
-        double prev_x_1 = previous_path_x_[prev_size - 1];
-        double prev_x = previous_path_x_[prev_size - 2];
-        speed_cur_mp20 = prev_x_1 - prev_x;
+        double x_translated = ref_prev_prev.x - ref_prev.x;
+        double y_translated = ref_prev_prev.y - ref_prev.y;
+
+        auto x_in_car_frame = x_translated * cos(0 - ref_yaw) - y_translated * sin(0-ref_yaw);
+
+        speed_cur_mph = speed_mtr_per_sec_to_mph(fabs(x_in_car_frame) * 50);
     } else {
-        speed_cur_mp20 = speed_mph_to_mtr_per_sec(model_->speed_mph) * 0.02;
+        speed_cur_mph = model_->speed_mph;
     }
 
-    cout << "Speed at end of prev: " << speed_cur_mp20 << " mp20. Ideally should be: " <<
-         speed_mph_to_mtr_per_sec(get_ideal_speed()) * 0.02 << " mp20" << endl;
+    cout << "Speed at end of prev: " << speed_cur_mph << " mph. Ideally should be: " <<
+         get_ideal_speed() << " mph" << endl;
 
-    const auto target_x = 30.0;           // maximum m/s that the car can travel
-    const auto target_y = s(target_x);
+//    const auto target_x = 30.0;           // maximum m/s that the car can travel
+//    const auto target_y = s(target_x);
 //    const auto distance = sqrt(target_x * target_x + target_y * target_y);
 //    const auto distance_in_20ms = speed_mph_to_mtr_per_sec(model_.speed_mph) * 0.02;
 //    const double N = distance / distance_in_20ms;
 //    const double part_x = target_x / N;
 //    const auto part_x = distance_in_20ms;
 
-    auto speeds = GetDesiredSpeedPerSecond(speed_cur_mp20, 50 - prev_size + 1);
+    auto speeds = GetPerPointSpeed(speed_cur_mph, 50 - prev_size);
     auto speed_iterator = speeds.begin();
-    double desired_speed_mp20ms = *speed_iterator++;
+    double desired_speed_mph = *speed_iterator++;
+    double x_from_origin = 0;
 
-    for (int i = 1; i < 50 - prev_size; i++) {
+    for (int i = 0; i < 50 - prev_size; i++) {
 
 //    const auto distance_in_20ms = speed_mph_to_mtr_per_sec(model_.speed_mph) * 0.02;
-        const auto part_x = desired_speed_mp20ms;
+        const auto distance_travelled = speed_mph_to_mtr_per_sec(desired_speed_mph) * 0.02;
 
-        double x_point = i * part_x;
-        double y_point = s(x_point);
+        x_from_origin += distance_travelled;
+        double y_from_origin = s(x_from_origin);
 
-        x_point = x_point * cos(ref_yaw) - y_point * sin(ref_yaw);
-        y_point = x_point * sin(ref_yaw) + y_point * cos(ref_yaw);
-
+        // translate from car system to world
+        auto x_point = x_from_origin * cos(ref_yaw) - y_from_origin * sin(ref_yaw);
+        auto y_point = x_from_origin * sin(ref_yaw) + y_from_origin * cos(ref_yaw);
         x_point += ref_prev.x;
         y_point += ref_prev.y;
 
@@ -142,10 +147,9 @@ void CarDriver::Process() {
         last_debug_->next_pts.push_back(CartesianPoint(x_point, y_point));
 
         if (speed_iterator != speeds.end())
-            desired_speed_mp20ms = *speed_iterator++;
+            desired_speed_mph = *speed_iterator++;
 
-        cout << "Speed set to: " << desired_speed_mp20ms << " mp20 == " <<
-             speed_mtr_per_sec_to_mph(desired_speed_mp20ms / 0.02) << " mph" << endl;
+//        cout << "Speed set to: " << desired_speed_mph << endl;
     }
 }
 
@@ -247,42 +251,38 @@ double CarDriver::get_ideal_speed() {
 //    }
 
     // return
-    return desired_speed_mph;
+    return desired_speed_mph_;
 }
 
-std::vector<double> CarDriver::GetDesiredSpeedPerSecond(double speed_cur_mp20, int points_needed) {
+std::vector<double> CarDriver::GetPerPointSpeed(double speed_cur_mph, int points_needed) {
     // max_acceleration is 10m/s^2
 
-    const double min_diff_20ms = speed_mph_to_mtr_per_sec(2.0) * 0.02;
-//    const double desired_speed_mp20 = speed_mph_to_mtr_per_sec(get_ideal_speed()) * 0.02;
-    const double desired_speed_mp20 = speed_mph_to_mtr_per_sec(50) * 0.02;
+    const double min_diff = 0.5;    // mph difference
 
     vector<double> speed;
-//    speed.push_back(desired_speed_mp20);
+//    speed.push_back(desired_speed_mph_);
 //    return speed;
 
-    int i = 0;
-    while (i++ < points_needed && fabs(speed_cur_mp20 - desired_speed_mp20) > min_diff_20ms) {
-        double diff = desired_speed_mp20 - speed_cur_mp20;
+    // && fabs(speed_cur_mph - desired_speed_mph_) > min_diff
+
+    const double max_a = 20.0;
+
+    for (int i = 0; i < points_needed; i++){
+        double diff = desired_speed_mph_ - speed_cur_mph;
 
         // v = 1/2 * a * t^2
         // we know v, have to find a needed to acheive this
 
-        auto a = (diff * 2) / (0.02 * 0.02);
-        a = min(a, 10.0);        // 10 m/s^2 is the maximum acceleration
+        // how much do we need to accelerate to get to this speed
+        auto a = min(max_a, diff) * 0.02;
+        speed_cur_mph += a;
 
-        auto old = speed_cur_mp20;
-        speed_cur_mp20 += 0.5 * a * 0.02 * 0.02;
-
-        if (old > speed_cur_mp20)
-            cout << "speed decreasing" << endl;
-
-        speed.push_back(speed_cur_mp20);
+        speed.push_back(speed_cur_mph);
     }
 
     // add one speed in case there was no need to accelerate / decelerate
     if (0 == speed.size())
-        speed.push_back(speed_cur_mp20);
+        speed.push_back(speed_cur_mph);
 
     return speed;
 }

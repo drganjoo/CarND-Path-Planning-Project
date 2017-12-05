@@ -25,14 +25,14 @@ public:
     void UpdateModel(json &x);
 
     void set_ideal_speed(double speed) {
-        desired_speed_mph = speed;
+        desired_speed_mph_ = speed;
     }
 
     double get_ideal_speed();
-    std::vector<double> GetDesiredSpeedPerSecond(double speed_cur_mp20, int points_needed);
+    std::vector<double> GetPerPointSpeed(double speed_cur_mp20, int points_needed);
 
     void set_desired_lane(int lane) {
-        desired_lane_no = lane;
+        desired_lane_no_ = lane;
     }
 
     double speed_mph_to_mtr_per_sec(double speed_mph) {
@@ -45,7 +45,7 @@ public:
     std::array<std::vector<double>, 2> GetPath();
 
     double GetDesiredFrenetLaneNo() const {
-        return 2 + desired_lane_no * 4;
+        return 2 + desired_lane_no_ * 4;
     }
 
 public:
@@ -70,8 +70,8 @@ private:
     std::vector<double> next_x_vals_;
     std::vector<double> next_y_vals_;
 
-    double desired_speed_mph;
-    int desired_lane_no;
+    double desired_speed_mph_;
+    int desired_lane_no_;
 };
 
 
