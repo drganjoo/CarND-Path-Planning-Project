@@ -73,12 +73,6 @@ void CarDriver::Process() {
     cout << "-------------------- Process " << prev_size << ", " << model_->speed_mph
          << " mph --------------------" << endl;
 
-//    model_.desired_speed_mph_ = get_ideal_speed();
-
-//    for (auto &constraint : constraints_) {
-//        constraint.Apply(&model_);
-//    }
-
     double ref_yaw;
     CartesianPoint ref_prev_prev, ref_prev;
     FigureOutCarOrigin(&ref_prev, &ref_prev_prev, &ref_yaw);
@@ -101,11 +95,14 @@ void CarDriver::Process() {
     double speed_cur_mph;
 
     if (prev_size > 1) {
+        // translate the last point back into the car origin to figure out
+        // the X distance between the last two points. That X distance is basically
+        // the speed of the car between those two points. So we start from that
+        // speed and then accelerate / decelerate to match the desired speed
         double x_translated = ref_prev_prev.x - ref_prev.x;
         double y_translated = ref_prev_prev.y - ref_prev.y;
 
         auto x_in_car_frame = x_translated * cos(0 - ref_yaw) - y_translated * sin(0-ref_yaw);
-
         speed_cur_mph = speed_mtr_per_sec_to_mph(fabs(x_in_car_frame) * 50);
     } else {
         speed_cur_mph = model_->speed_mph;
@@ -114,13 +111,6 @@ void CarDriver::Process() {
     cout << "Speed at end of prev: " << speed_cur_mph << " mph. Ideally should be: " <<
          get_ideal_speed() << " mph" << endl;
 
-//    const auto target_x = 30.0;           // maximum m/s that the car can travel
-//    const auto target_y = s(target_x);
-//    const auto distance = sqrt(target_x * target_x + target_y * target_y);
-//    const auto distance_in_20ms = speed_mph_to_mtr_per_sec(model_.speed_mph) * 0.02;
-//    const double N = distance / distance_in_20ms;
-//    const double part_x = target_x / N;
-//    const auto part_x = distance_in_20ms;
 
     auto speeds = GetPerPointSpeed(speed_cur_mph, 50 - prev_size);
     auto speed_iterator = speeds.begin();
@@ -129,7 +119,6 @@ void CarDriver::Process() {
 
     for (int i = 0; i < 50 - prev_size; i++) {
 
-//    const auto distance_in_20ms = speed_mph_to_mtr_per_sec(model_.speed_mph) * 0.02;
         const auto distance_travelled = speed_mph_to_mtr_per_sec(desired_speed_mph) * 0.02;
 
         x_from_origin += distance_travelled;
@@ -148,9 +137,10 @@ void CarDriver::Process() {
 
         if (speed_iterator != speeds.end())
             desired_speed_mph = *speed_iterator++;
-
-//        cout << "Speed set to: " << desired_speed_mph << endl;
     }
+
+    // look at all the other cars in the same lane as us and see if we need to slow down
+
 }
 
 tk::spline CarDriver::GetSpline(const CartesianPoint &ref_prev, CartesianPoint &ref_prev_prev, double ref_yaw) {
