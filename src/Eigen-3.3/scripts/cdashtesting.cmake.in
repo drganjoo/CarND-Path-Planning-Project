@@ -25,7 +25,7 @@ include("${CTEST_SOURCE_DIRECTORY}/CTestConfig.cmake")
 
 foreach(subproject ${CTEST_PROJECT_SUBPROJECTS})
   message("")
-  message("DriveAtSpeedLimit ${subproject}")
+  message("DriveAtSpeed ${subproject}")
   
   set_property(GLOBAL PROPERTY SubProject ${subproject})
   set_property(GLOBAL PROPERTY Label ${subproject})

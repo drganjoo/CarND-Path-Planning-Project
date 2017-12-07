@@ -28,7 +28,7 @@ public:
     }
 
     double get_ideal_speed();
-    std::vector<double> GetPerPointSpeed(double speed_cur_mp20, int points_needed);
+    std::vector<double> GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed);
 
     void set_desired_lane(int lane) {
         desired_lane_no_ = lane;
@@ -55,11 +55,11 @@ private:
     void DoState();
     void FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last_last_pt, double *ref_yaw);
 //    double HowManyMetersTravelledIn20ms(double cur_speed_mph);
-    void DriveAtSpeedLimit();
-    tk::spline GetSpline();
+    void DriveAtSpeed(double speed_mph);
+    tk::spline GetPathToFollow();
     bool CloseToCar(double speed);
     void MatchCarSpeed();
-    double GenerateNextXYForSpeed(double speed_mph);
+    double GenerateNextXYForSpeed(double cur_speed_mph, double required_speed_mph, const tk::spline &path_spline);
 
 private:
     std::unique_ptr<CarModel> model_;
@@ -74,7 +74,6 @@ private:
     std::vector<double> next_y_vals_;
     DrivingState state_;
 
-    tk::spline path_spline;
     double desired_speed_mph_;
     int desired_lane_no_;
 };
