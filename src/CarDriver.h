@@ -22,27 +22,22 @@ public:
     CarDriver();
 
     void UpdateModel(json &x);
+    double get_ideal_speed();
+    std::vector<double> GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed);
+    std::array<std::vector<double>, 2> GetPath();
 
     void set_ideal_speed(double speed) {
         desired_speed_mph_ = speed;
     }
-
-    double get_ideal_speed();
-    std::vector<double> GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed);
-
     void set_desired_lane(int lane) {
         desired_lane_no_ = lane;
     }
-
     double speed_mph_to_mtr_per_sec(double speed_mph) {
         return (speed_mph * 1.60934 * 1000.0) / (60.0 * 60.0);
     }
     double speed_mtr_per_sec_to_mph(double speed_mps) {
         return (speed_mps * 60 * 60 ) / (1.60934 * 1000.0);
     }
-
-    std::array<std::vector<double>, 2> GetPath();
-
     double GetDesiredFrenetLaneNo() const {
         return 2 + desired_lane_no_ * 4;
     }
@@ -60,6 +55,8 @@ private:
     bool CloseToCar(double speed);
     void MatchCarSpeed();
     double GenerateNextXYForSpeed(double cur_speed_mph, double required_speed_mph, const tk::spline &path_spline);
+    double GetMetersToStop(double speed_mph);
+    CartesianPoint TranslateXYToBodyFrame(const double x, const double y);
 
 private:
     std::unique_ptr<CarModel> model_;

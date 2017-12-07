@@ -9,6 +9,7 @@ using namespace std;
 
 static double deg2rad(double x) { return x * M_PI / 180.0; }
 static double rad2deg(double x) { return x * 180 / M_PI; }
+double distance(double x1, double y1, double x2, double y2);
 
 vector<double> getFrenet(double x, double y, double theta);
 
@@ -133,6 +134,12 @@ void CarDriver::MatchCarSpeed() {
     }
 
     DriveAtSpeed(desired_speed_mph_);
+
+    auto car_in_body_frame = TranslateXYToBodyFrame(closest_car->x, closest_car->y);
+    auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
+
+    if (GetMetersToStop(desired_speed_mph_) * 1.5 > distance_to_car)
+        state_ =  DrivingState::FollowSpeedLimit;
 }
 
 void CarDriver::DriveAtSpeed(double speed_mph) {
@@ -222,10 +229,7 @@ double CarDriver::GenerateNextXYForSpeed(double cur_speed_mph, double required_s
 
 bool CarDriver::CloseToCar(double speed_mph) {
     bool car_close = false;
-
-    auto max_decelerate_mps = 10.0;
-    auto speed_mps = speed_mph_to_mtr_per_sec(speed_mph);
-    auto meters_to_stop = speed_mps * speed_mps / max_decelerate_mps + 5.0;
+    double meters_to_stop = GetMetersToStop(speed_mph);
 
     auto lane_no = (int) (model_->car_d / 4);
 
@@ -248,6 +252,30 @@ bool CarDriver::CloseToCar(double speed_mph) {
     return car_close;
 }
 
+double CarDriver::GetMetersToStop(double speed_mph) {
+    const auto max_decelerate_mps = 10.0;
+    const auto speed_mps = speed_mph_to_mtr_per_sec(speed_mph);
+    auto meters_to_stop = speed_mps * speed_mps / max_decelerate_mps + 5.0;
+    return meters_to_stop;
+}
+
+
+CartesianPoint CarDriver::TranslateXYToBodyFrame(const double x, const double y){
+    const double origin_x = model_->ref_prev.x;
+    const double origin_y = model_->ref_prev.y;
+    // shift back to start of car
+    double x_translated = x - origin_x;
+    double y_translated = y - origin_y;
+
+    CartesianPoint pt_in_body;
+
+    pt_in_body.x = x_translated * cos(0 - model_->ref_yaw) - y_translated * sin(0-model_->ref_yaw);
+    pt_in_body.y = x_translated * sin(0 - model_->ref_yaw) + y_translated * cos(0-model_->ref_yaw);
+
+    return pt_in_body;
+}
+
+
 tk::spline CarDriver::GetPathToFollow() {
     vector<double> spline_pts_x;
     vector<double> spline_pts_y;
@@ -258,9 +286,6 @@ tk::spline CarDriver::GetPathToFollow() {
     spline_pts_x.push_back(model_->ref_prev.x);
     spline_pts_y.push_back(model_->ref_prev_prev.y);
     spline_pts_y.push_back(model_->ref_prev.y);
-
-    double origin_x = model_->ref_prev.x;
-    double origin_y = model_->ref_prev.y;
 
     auto lane_no_d = GetDesiredFrenetLaneNo();
     FrenetPoint wp[3] = {{model_->car_s + 30, lane_no_d}, {model_->car_s + 60, lane_no_d}, {model_->car_s + 90, lane_no_d}};
@@ -277,15 +302,18 @@ tk::spline CarDriver::GetPathToFollow() {
         // copy original spline points for debugging
         last_debug_->spline_pts.push_back(CartesianPoint(spline_pts_x[i], spline_pts_y[i]));
 
-        // shift back to start of car
-        double x_translated = spline_pts_x[i] - origin_x;
-        double y_translated = spline_pts_y[i] - origin_y;
+//        const double origin_x = model_->ref_prev.x;
+//        const double origin_y = model_->ref_prev.y;
+//        // shift back to start of car
+//        double x_translated = spline_pts_x[i] - origin_x;
+//        double y_translated = spline_pts_y[i] - origin_y;
+//
+//        auto x_in_car_frame = x_translated * cos(0 - model_->ref_yaw) - y_translated * sin(0-model_->ref_yaw);
+//        auto y_in_car_frame = x_translated * sin(0 - model_->ref_yaw) + y_translated * cos(0-model_->ref_yaw);
 
-        auto x_in_car_frame = x_translated * cos(0 - model_->ref_yaw) - y_translated * sin(0-model_->ref_yaw);
-        auto y_in_car_frame = x_translated * sin(0 - model_->ref_yaw) + y_translated * cos(0-model_->ref_yaw);
-
-        spline_pts_x[i] = x_in_car_frame;
-        spline_pts_y[i] = y_in_car_frame;
+        auto pt_in_body = TranslateXYToBodyFrame(spline_pts_x[i], spline_pts_y[i]);
+        spline_pts_x[i] = pt_in_body.x;
+        spline_pts_y[i] = pt_in_body.y;
     }
 
     tk::spline s;
