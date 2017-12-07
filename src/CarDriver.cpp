@@ -12,12 +12,19 @@ static double rad2deg(double x) { return x * 180 / M_PI; }
 
 vector<double> getFrenet(double x, double y, double theta);
 
+CarDriver::CarDriver() {
+    end_path_s_ = 0.0;
+    end_path_d_ = 0.0;
+    state_ = DrivingState::FollowSpeedLimit;
+}
+
+
 std::array<std::vector<double>, 2> CarDriver::GetPath() {
     return {next_x_vals_, next_y_vals_};
 }
 
-//double CarDriver::HowManyMetersTravelledIn20ms(double speed_mph) {
-//    auto distance_in_20ms = speed_mph_to_mtr_per_sec(speed_mph) * 0.02;
+//double CarDriver::HowManyMetersTravelledIn20ms(double cur_speed_mph) {
+//    auto distance_in_20ms = speed_mph_to_mtr_per_sec(cur_speed_mph) * 0.02;
 //    return distance_in_20ms;
 //}
 
@@ -31,7 +38,7 @@ void CarDriver::UpdateModel(json &j) {
 //    model_.car_s = j["s"];
 //    model_.car_d = j["d"];
 //    model_.car_yaw = j["yaw"];
-//    model_.speed_mph = j["speed"];
+//    model_.cur_speed_mph = j["speed"];
 
     previous_path_x_ = j["previous_path_x"];
     previous_path_y_ = j["previous_path_y"];
@@ -56,7 +63,8 @@ void CarDriver::UpdateModel(json &j) {
         sensor_fusion_.push_back(v);
     }
 
-    Process();
+    //DriveAtSpeedLimit();
+    DoState();
 
     last_debug_->sensor_fusion = sensor_fusion_;
     last_debug_->desired_speed_mph = desired_speed_mph_;
@@ -65,19 +73,91 @@ void CarDriver::UpdateModel(json &j) {
 //    debug_packets_.push_back(last_debug_);
 }
 
-void CarDriver::Process() {
+void CarDriver::DoState() {
+    switch (state_){
+        case DrivingState::FollowSpeedLimit:
+            DriveAtSpeedLimit();
+            break;
+
+        case DrivingState ::MatchCarSpeed:
+            MatchCarSpeed();
+            break;
+
+        default:
+    }
+}
+
+void CarDriver::MatchCarSpeed() {
+    // find the closest car to us
+    auto sensor_size = sensor_fusion_.size();
+    if (sensor_size ==  0) {
+        state_ = DrivingState::FollowSpeedLimit;
+        DriveAtSpeedLimit();
+        return;
+    }
+
+    auto max_decelerate_mps = 10.0;
+    auto speed_mps = speed_mph_to_mtr_per_sec(model_->cur_speed_mph);
+    auto meters_to_stop = speed_mps * speed_mps / max_decelerate_mps + 5.0;
+
+    // find the car that is closest to us
+    auto lane_no = (int) (model_->car_d / 4);
+    VehicleSensed *closest_car = nullptr;
+
+    for (auto &other_car : sensor_fusion_) {
+        // only look at cars that are in our lane
+        if (other_car.d >= lane_no * 4 && other_car.d <= lane_no * 4 + 4) {
+
+            // the car should be close to us
+            auto distance = other_car.s - model_->car_s;
+            if (distance > 0 && distance < meters_to_stop) {
+
+                // mark this car as the closest in case other cars in our lane
+                // are farther than this
+
+                if (!closest_car)
+                    closest_car = &other_car;
+                else if (other_car.s < closest_car->s)
+                    closest_car = &other_car;
+            }
+        }
+    }
+
+    // switch states in case there is no closest car
+    if (!closest_car) {
+        state_ = DrivingState::FollowSpeedLimit;
+        DriveAtSpeedLimit();
+        return;
+    }
+
+    desired_speed_mph_ = closest_car->x_dot;
+
+    if (fabs(desired_speed_mph_ - model_->cur_speed_mph) < 2) {
+        //ChangeLanes();
+        cout << "Go for changing lanes now " << endl;
+    }
+    else {
+        // generate 50 points (forgetting the previous ones)
+
+        previous_path_x_.clear();
+
+        FigureOutCarOrigin(&model_->ref_prev, &model_->ref_prev_prev, &model_->ref_yaw);
+        path_spline = GetSpline();
+
+        GenerateNextXYForSpeed(model_->cur_speed_mph);
+    }
+}
+
+void CarDriver::DriveAtSpeedLimit() {
     auto prev_size = previous_path_x_.size();
     next_x_vals_.clear();
     next_y_vals_.clear();
 
-    cout << "-------------------- Process " << prev_size << ", " << model_->speed_mph
+    cout << "-------------------- DriveAtSpeedLimit " << prev_size << ", " << model_->cur_speed_mph
          << " mph --------------------" << endl;
 
-    double ref_yaw;
-    CartesianPoint ref_prev_prev, ref_prev;
-    FigureOutCarOrigin(&ref_prev, &ref_prev_prev, &ref_yaw);
-
-    auto s = GetSpline(ref_prev, ref_prev_prev, ref_yaw);
+    FigureOutCarOrigin(&model_->ref_prev, &model_->ref_prev_prev, &model_->ref_yaw);
+    path_spline = GetSpline();
 
     // add previous points to the next x/y to keep some continuity and minimize
     // jerk
@@ -92,43 +172,50 @@ void CarDriver::Process() {
         last_debug_->previous_pts.push_back(CartesianPoint(prev_x, prev_y));
     }
 
-    double speed_cur_mph;
-
     if (prev_size > 1) {
         // translate the last point back into the car origin to figure out
         // the X distance between the last two points. That X distance is basically
         // the speed of the car between those two points. So we start from that
         // speed and then accelerate / decelerate to match the desired speed
-        double x_translated = ref_prev_prev.x - ref_prev.x;
-        double y_translated = ref_prev_prev.y - ref_prev.y;
+        double x_translated = model_->ref_prev_prev.x - model_->ref_prev.x;
+        double y_translated = model_->ref_prev_prev.y - model_->ref_prev.y;
 
-        auto x_in_car_frame = x_translated * cos(0 - ref_yaw) - y_translated * sin(0-ref_yaw);
-        speed_cur_mph = speed_mtr_per_sec_to_mph(fabs(x_in_car_frame) * 50);
+        auto x_in_car_frame = x_translated * cos(0 - model_->ref_yaw) - y_translated * sin(0-model_->ref_yaw);
+        model_->ref_speed_mph = speed_mtr_per_sec_to_mph(fabs(x_in_car_frame) * 50);
     } else {
-        speed_cur_mph = model_->speed_mph;
+        model_->ref_speed_mph = model_->cur_speed_mph;
     }
 
-    cout << "Speed at end of prev: " << speed_cur_mph << " mph. Ideally should be: " <<
+    cout << "Speed at end of prev: " << model_->ref_speed_mph << " mph. Ideally should be: " <<
          get_ideal_speed() << " mph" << endl;
 
+    auto speed_between_points = GenerateNextXYForSpeed(model_->ref_speed_mph);
 
-    auto speeds = GetPerPointSpeed(speed_cur_mph, 50 - prev_size);
+    if (CloseToCar(speed_between_points))
+        state_ = DrivingState::MatchCarSpeed;
+}
+
+
+double CarDriver::GenerateNextXYForSpeed(double speed_mph) {
+    auto prev_size = previous_path_x_.size();
+    auto speeds = GetPerPointSpeed(model_->ref_speed_mph, 50 - prev_size);
+
     auto speed_iterator = speeds.begin();
-    double desired_speed_mph = *speed_iterator++;
+    double speed_between_points = *speed_iterator++;
     double x_from_origin = 0;
 
     for (int i = 0; i < 50 - prev_size; i++) {
 
-        const auto distance_travelled = speed_mph_to_mtr_per_sec(desired_speed_mph) * 0.02;
+        const auto distance_travelled = speed_mph_to_mtr_per_sec(speed_between_points) * 0.02;
 
         x_from_origin += distance_travelled;
-        double y_from_origin = s(x_from_origin);
+        double y_from_origin = path_spline(x_from_origin);
 
         // translate from car system to world
-        auto x_point = x_from_origin * cos(ref_yaw) - y_from_origin * sin(ref_yaw);
-        auto y_point = x_from_origin * sin(ref_yaw) + y_from_origin * cos(ref_yaw);
-        x_point += ref_prev.x;
-        y_point += ref_prev.y;
+        auto x_point = x_from_origin * cos(model_->ref_yaw) - y_from_origin * sin(model_->ref_yaw);
+        auto y_point = x_from_origin * sin(model_->ref_yaw) + y_from_origin * cos(model_->ref_yaw);
+        x_point += model_->ref_prev.x;
+        y_point += model_->ref_prev.y;
 
         next_x_vals_.push_back(x_point);
         next_y_vals_.push_back(y_point);
@@ -136,30 +223,58 @@ void CarDriver::Process() {
         last_debug_->next_pts.push_back(CartesianPoint(x_point, y_point));
 
         if (speed_iterator != speeds.end())
-            desired_speed_mph = *speed_iterator++;
+            speed_between_points = *speed_iterator++;
     }
 
-    // look at all the other cars in the same lane as us and see if we need to slow down
-
+    return speed_between_points;
 }
 
-tk::spline CarDriver::GetSpline(const CartesianPoint &ref_prev, CartesianPoint &ref_prev_prev, double ref_yaw) {
+
+
+// Shortcomming: it should have been based on the points that have been generated not
+// on the current car_d as previous path might have quite a few points left over
+
+bool CarDriver::CloseToCar(double speed_mph) {
+    bool car_close = false;
+
+    auto max_decelerate_mps = 10.0;
+    auto speed_mps = speed_mph_to_mtr_per_sec(speed_mph);
+    auto meters_to_stop = speed_mps * speed_mps / max_decelerate_mps + 5.0;
+
+    auto lane_no = (int) (model_->car_d / 4);
+    // ensure we are not going to crash
+    for (auto &other_car: sensor_fusion_) {
+        if (other_car.d >= lane_no * 4 && other_car.d <= lane_no * 4 + 4) {
+            cout << "car: " << other_car.car_id << " with d: " << other_car.d
+                 << " is in our lane, and it will take us  "
+                 << meters_to_stop << " meters to stop" << endl;
+
+            auto distance = other_car.s - model_->car_s;
+            if (distance > 0 && distance < meters_to_stop) {
+                car_close = true;
+                cout << "Car is close!!! Looks like it is travelling at " << other_car.x_dot << endl;
+
+                break;
+            }
+        }
+    }
+
+    return car_close;
+}
+
+tk::spline CarDriver::GetSpline() {
     vector<double> spline_pts_x;
     vector<double> spline_pts_y;
 
-    spline_pts_x.push_back(ref_prev_prev.x);
-    spline_pts_x.push_back(ref_prev.x);
-    spline_pts_y.push_back(ref_prev_prev.y);
-    spline_pts_y.push_back(ref_prev.y);
+    spline_pts_x.push_back(model_->ref_prev_prev.x);
+    spline_pts_x.push_back(model_->ref_prev.x);
+    spline_pts_y.push_back(model_->ref_prev_prev.y);
+    spline_pts_y.push_back(model_->ref_prev.y);
 
-    double origin_x = ref_prev.x;
-    double origin_y = ref_prev.y;
+    double origin_x = model_->ref_prev.x;
+    double origin_y = model_->ref_prev.y;
 
     auto lane_no_d = GetDesiredFrenetLaneNo();
-
-//    auto prev_frenet = getFrenet(ref_prev.x, ref_prev.y, ref_yaw);
-//    auto prev_prev_frenet = getFrenet(ref_prev_prev.x, ref_prev_prev.y, ref_yaw);
-
     FrenetPoint wp[3] = {{model_->car_s + 30, lane_no_d}, {model_->car_s + 60, lane_no_d}, {model_->car_s + 90, lane_no_d}};
 
     copy(begin(wp), end(wp), back_inserter(last_debug_->spline_addons));
@@ -178,8 +293,8 @@ tk::spline CarDriver::GetSpline(const CartesianPoint &ref_prev, CartesianPoint &
         double x_translated = spline_pts_x[i] - origin_x;
         double y_translated = spline_pts_y[i] - origin_y;
 
-        auto x_in_car_frame = x_translated * cos(0 - ref_yaw) - y_translated * sin(0-ref_yaw);
-        auto y_in_car_frame = x_translated * sin(0 - ref_yaw) + y_translated * cos(0-ref_yaw);
+        auto x_in_car_frame = x_translated * cos(0 - model_->ref_yaw) - y_translated * sin(0-model_->ref_yaw);
+        auto y_in_car_frame = x_translated * sin(0 - model_->ref_yaw) + y_translated * cos(0-model_->ref_yaw);
 
 //        cout << x_translated << ",\t" << y_translated << ",\t" << x_in_car_frame << ",\t" << y_in_car_frame << endl;
 
@@ -255,7 +370,7 @@ std::vector<double> CarDriver::GetPerPointSpeed(double speed_cur_mph, int points
 
     // && fabs(speed_cur_mph - desired_speed_mph_) > min_diff
 
-    const double max_a = 20.0;
+    const double max_a = 20.0;      // 10m/s * 60 * 60 / 1000 / 1.60934
 
     for (int i = 0; i < points_needed; i++){
         double diff = desired_speed_mph_ - speed_cur_mph;
@@ -276,4 +391,3 @@ std::vector<double> CarDriver::GetPerPointSpeed(double speed_cur_mph, int points
 
     return speed;
 }
-

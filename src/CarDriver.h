@@ -15,12 +15,11 @@
 
 using json = nlohmann::json;
 
+enum class DrivingState { FollowSpeedLimit, MatchCarSpeed, ChangeLane };
+
 class CarDriver {
 public:
-    CarDriver() {
-        end_path_s_ = 0.0;
-        end_path_d_ = 0.0;
-    }
+    CarDriver();
 
     void UpdateModel(json &x);
 
@@ -53,10 +52,14 @@ public:
 //    std::vector<DebugValues> debug_packets_;
 
 private:
+    void DoState();
     void FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last_last_pt, double *ref_yaw);
-//    double HowManyMetersTravelledIn20ms(double speed_mph);
-    void Process();
-    tk::spline GetSpline(const CartesianPoint &ref_prev, CartesianPoint &ref_prev_prev, double ref_yaw);
+//    double HowManyMetersTravelledIn20ms(double cur_speed_mph);
+    void DriveAtSpeedLimit();
+    tk::spline GetSpline();
+    bool CloseToCar(double speed);
+    void MatchCarSpeed();
+    double GenerateNextXYForSpeed(double speed_mph);
 
 private:
     std::unique_ptr<CarModel> model_;
@@ -69,7 +72,9 @@ private:
     std::vector<DrivingConstraints> constraints_;
     std::vector<double> next_x_vals_;
     std::vector<double> next_y_vals_;
+    DrivingState state_;
 
+    tk::spline path_spline;
     double desired_speed_mph_;
     int desired_lane_no_;
 };

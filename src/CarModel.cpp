@@ -13,7 +13,7 @@ void to_json(json& j, const FrenetPoint& fp){
 }
 
 void to_json(json& j, const CarModel& cm) {
-    j["speedMph"] = cm.speed_mph;
+    j["speedMph"] = cm.cur_speed_mph;
     j["x"] = cm.car_x;
     j["y"] = cm.car_y;
     j["s"] = cm.car_s;

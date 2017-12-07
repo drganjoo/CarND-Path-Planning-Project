@@ -22,33 +22,6 @@ struct VehicleSensed {
     double d;
 };
 
-struct CarModel {
-    const double car_x;
-    const double car_y;
-    const double car_s;
-    const double car_d;
-    const double car_yaw;
-    const double speed_mph;
-
-    CarModel(const json &j) :
-        car_x(j["x"]),
-        car_y(j["y"]),
-        car_s(j["s"]),
-        car_d(j["d"]),
-        car_yaw(j["yaw"]),
-        speed_mph(j["speed"])
-    {
-    }
-
-//    double GetSpeedInMeterPerSec() const {
-//        return speed_mph * 1.60934 * 1000.0 / 60 / 60;  // to kilometers, to / minute, to / second
-//    }
-
-//    void reset() {
-//        memset(this, sizeof(CarModel), 0);
-//    }
-};
-
 struct CartesianPoint {
     double x;
     double y;
@@ -97,6 +70,36 @@ struct FrenetPoint {
     }
 };
 
+struct CarModel {
+    const double car_x;
+    const double car_y;
+    const double car_s;
+    const double car_d;
+    const double car_yaw;
+    const double cur_speed_mph;
+
+    CartesianPoint ref_prev_prev;
+    CartesianPoint ref_prev;
+    double ref_yaw;
+    double ref_speed_mph;
+
+    CarModel(const json &j) :
+            car_x(j["x"]),
+            car_y(j["y"]),
+            car_s(j["s"]),
+            car_d(j["d"]),
+            car_yaw(j["yaw"]),
+            cur_speed_mph(j["speed"])
+    {
+        ref_yaw = 0.0;
+        ref_speed_mph = 0.0;
+    }
+};
+
+
+/*------------------------------------    DEBUG Values   ------------------------------------------ */
+
+
 enum class YawCalculation { CarYaw, PreviousPoints };
 
 struct DebugRefYaw {
@@ -113,6 +116,8 @@ struct DebugRefYaw {
     }
 };
 
+
+
 struct DebugValues {
     std::chrono::system_clock::time_point acq_time;
     CarModel model;
@@ -126,9 +131,6 @@ struct DebugValues {
     double desired_speed_mph;
     int desired_lane_no;
 
-
-//    std::vector<json> sim_messagses_;       // all messages are kept here for logging to file and possible playback
-
     DebugValues(const CarModel &init_model) :
             model(init_model)
     {
@@ -136,18 +138,6 @@ struct DebugValues {
         desired_speed_mph = -1;
         desired_lane_no = -1;
     }
-
-//    void reset() {
-//        model.reset();
-//        spline_addons.clear();
-//        spline_pts.clear();
-//        previous_pts.clear();
-//        spline_generated_pts.clear();
-//        next_pts.clear();
-//        ref_yaw.reset();
-//
-//        acq_time = std::chrono::system_clock::now();
-//    }
 };
 
 
