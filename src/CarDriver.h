@@ -57,6 +57,7 @@ private:
     double GenerateNextXYForSpeed(double cur_speed_mph, double required_speed_mph, const tk::spline &path_spline);
     double GetMetersToStop(double speed_mph);
     CartesianPoint TranslateXYToBodyFrame(const double x, const double y);
+    int GetLaneCosts();
 
 private:
     std::unique_ptr<CarModel> model_;
@@ -73,6 +74,8 @@ private:
 
     double desired_speed_mph_;
     int desired_lane_no_;
+
+    VehicleSensed max_distance_cars_[3];     // three temporary cars that eases in code for figuring out the distance
 };
 
 

@@ -17,6 +17,18 @@ CarDriver::CarDriver() {
     end_path_s_ = 0.0;
     end_path_d_ = 0.0;
     state_ = DrivingState::FollowSpeedLimit;
+
+    // initialize three cars, one eac per lane to be used for finding out
+    // the closest car. these have very far away S
+
+    for (int i = 0; i < 3; i++) {
+        max_distance_cars_[i].s = std::numeric_limits<double>::max();
+        max_distance_cars_[i].car_id = 9000 + i;
+        max_distance_cars_[i].d = i;
+        max_distance_cars_[i].x_dot = 0;
+        max_distance_cars_[i].x = std::numeric_limits<double>::max();
+        max_distance_cars_[i].y = std::numeric_limits<double>::max();
+    }
 }
 
 
@@ -124,22 +136,25 @@ void CarDriver::MatchCarSpeed() {
     }
 
     auto other_car_speed = speed_mtr_per_sec_to_mph(closest_car->x_dot);
-    cout << "Closed car found: " << closest_car->car_id << " travelling at: " << other_car_speed << " mph" << endl;
-
     desired_speed_mph_ = speed_mtr_per_sec_to_mph(closest_car->x_dot);
 
-    if (fabs(desired_speed_mph_ - model_->cur_speed_mph) < 2) {
-        //ChangeLanes();
-        cout << "Speed matched, we can now go for changing lanes now " << endl;
-    }
+    cout << "Closed car found: " << closest_car->car_id << " travelling at: " << other_car_speed << " mph" << endl;
+
+//    if (fabs(desired_speed_mph_ - model_->cur_speed_mph) < 2) {
+//        //ChangeLanes();
+//        cout << "Speed matched, we can now go for changing lanes now " << endl;
+//    }
 
     DriveAtSpeed(desired_speed_mph_);
 
-    auto car_in_body_frame = TranslateXYToBodyFrame(closest_car->x, closest_car->y);
-    auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
+    desired_lane_no_ = GetLaneCosts();
 
-    if (GetMetersToStop(desired_speed_mph_) * 1.5 > distance_to_car)
-        state_ =  DrivingState::FollowSpeedLimit;
+    // increase speed in case we have some more space
+//    auto car_in_body_frame = TranslateXYToBodyFrame(closest_car->x, closest_car->y);
+//    auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
+//
+//    if (GetMetersToStop(desired_speed_mph_) * 1.5 > distance_to_car)
+//        state_ =  DrivingState::FollowSpeedLimit;
 }
 
 void CarDriver::DriveAtSpeed(double speed_mph) {
@@ -183,7 +198,6 @@ void CarDriver::DriveAtSpeed(double speed_mph) {
          get_ideal_speed() << " mph" << endl;
 
     auto speed_between_points = GenerateNextXYForSpeed(model_->ref_speed_mph, speed_mph, path_spline);
-
     if (CloseToCar(speed_between_points))
         state_ = DrivingState::MatchCarSpeed;
 }
@@ -404,4 +418,53 @@ std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double req
         speed.push_back(cur_speed_mph);
 
     return speed;
+}
+
+int CarDriver::GetLaneCosts() {
+    const auto lane_occupancy_cost = 0.3;
+
+    // the cost is based on
+    // 1) Which lane can we go faster in?
+    // 2) Can we move there?
+    //  a) Is there a car right next to us or a car that we will crash into
+    //  b) Do we need to wait for the car to pass us and then come in?
+
+    VehicleSensed* lane_wise_closest[3];
+    for (int i = 0; i < 3; i++) {
+        lane_wise_closest[i] = &max_distance_cars_[i];
+    }
+
+    for (auto &other_car: sensor_fusion_) {
+        if (other_car.s < model_->car_s)
+            continue;
+
+        auto lane_no = (int)(other_car.d / 4.0);
+        if (other_car.s < lane_wise_closest[lane_no]->s)
+            lane_wise_closest[lane_no] = &other_car;
+    }
+
+    // lane that has the farthest car (or no car) is the best car
+    // formula to calculate the distance to reach car:
+    // time = distance meters /difference in speed (in meters)
+
+    double catchup_distance[3];
+    auto our_speed_mps = speed_mph_to_mtr_per_sec(desired_speed_mph_);
+
+    for (int i = 0; i < 3; i++) {
+        CartesianPoint car_in_body_frame = TranslateXYToBodyFrame(lane_wise_closest[i]->x, lane_wise_closest[i]->y);
+        auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
+        auto other_car_speed_mps = lane_wise_closest[i]->x_dot;
+        auto diff_speed = our_speed_mps - other_car_speed_mps;
+
+        catchup_distance[i] = distance_to_car / diff_speed;
+    }
+
+    // lane with the highest catchup_distance is best
+    int best_lane = 0;
+    for (int i = 1; i < 3; i++) {
+        if (catchup_distance[i] > catchup_distance[best_lane])
+            best_lane = i;
+    }
+
+    return best_lane;
 }
