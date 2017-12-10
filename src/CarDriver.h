@@ -22,12 +22,11 @@ public:
     CarDriver();
 
     void UpdateModel(json &x);
-    double get_ideal_speed();
     std::vector<double> GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed);
     std::array<std::vector<double>, 2> GetPath();
 
     void set_ideal_speed(double speed) {
-        desired_speed_mph_ = speed;
+        ideal_speed_mph_ = speed;
     }
     void set_desired_lane(int lane) {
         desired_lane_no_ = lane;
@@ -72,7 +71,8 @@ private:
     std::vector<double> next_y_vals_;
     DrivingState state_;
 
-    double desired_speed_mph_;
+    double constrained_speed_mph_;
+    double ideal_speed_mph_;
     int desired_lane_no_;
 
     VehicleSensed max_distance_cars_[3];     // three temporary cars that eases in code for figuring out the distance

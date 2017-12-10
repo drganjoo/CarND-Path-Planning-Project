@@ -68,7 +68,7 @@ void CarDriver::UpdateModel(json &j) {
     DoState();
 
     last_debug_->sensor_fusion = sensor_fusion_;
-    last_debug_->desired_speed_mph = desired_speed_mph_;
+    last_debug_->desired_speed_mph = constrained_speed_mph_;
     last_debug_->desired_lane_no = desired_lane_no_;
 
 //    debug_packets_.push_back(last_debug_);
@@ -77,7 +77,8 @@ void CarDriver::UpdateModel(json &j) {
 void CarDriver::DoState() {
     switch (state_){
         case DrivingState::FollowSpeedLimit:
-            DriveAtSpeed(desired_speed_mph_);
+            //DriveAtSpeed(constrained_speed_mph_);
+            DriveAtSpeed(ideal_speed_mph_);
             break;
 
         case DrivingState ::MatchCarSpeed:
@@ -131,29 +132,32 @@ void CarDriver::MatchCarSpeed() {
         cout << "Couldn't find a closest car. Going for FollowSpeedLimit" << endl;
 
         state_ = DrivingState::FollowSpeedLimit;
-        DriveAtSpeed(desired_speed_mph_);
+        constrained_speed_mph_ = ideal_speed_mph_;
+        DriveAtSpeed(constrained_speed_mph_);
         return;
     }
 
     auto other_car_speed = speed_mtr_per_sec_to_mph(closest_car->x_dot);
-    desired_speed_mph_ = speed_mtr_per_sec_to_mph(closest_car->x_dot);
+    constrained_speed_mph_ = speed_mtr_per_sec_to_mph(closest_car->x_dot);
 
     cout << "Closed car found: " << closest_car->car_id << " travelling at: " << other_car_speed << " mph" << endl;
 
-//    if (fabs(desired_speed_mph_ - model_->cur_speed_mph) < 2) {
+//    if (fabs(constrained_speed_mph_ - model_->cur_speed_mph) < 2) {
 //        //ChangeLanes();
 //        cout << "Speed matched, we can now go for changing lanes now " << endl;
 //    }
 
-    DriveAtSpeed(desired_speed_mph_);
+    DriveAtSpeed(constrained_speed_mph_);
 
     desired_lane_no_ = GetLaneCosts();
+
+    cout << "Desired lane #: " << desired_lane_no_ << endl;
 
     // increase speed in case we have some more space
 //    auto car_in_body_frame = TranslateXYToBodyFrame(closest_car->x, closest_car->y);
 //    auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
 //
-//    if (GetMetersToStop(desired_speed_mph_) * 1.5 > distance_to_car)
+//    if (GetMetersToStop(constrained_speed_mph_) * 1.5 > distance_to_car)
 //        state_ =  DrivingState::FollowSpeedLimit;
 }
 
@@ -193,9 +197,6 @@ void CarDriver::DriveAtSpeed(double speed_mph) {
     } else {
         model_->ref_speed_mph = model_->cur_speed_mph;
     }
-
-    cout << "Speed at end of prev: " << model_->ref_speed_mph << " mph. Ideally should be: " <<
-         get_ideal_speed() << " mph" << endl;
 
     auto speed_between_points = GenerateNextXYForSpeed(model_->ref_speed_mph, speed_mph, path_spline);
     if (CloseToCar(speed_between_points))
@@ -249,9 +250,9 @@ bool CarDriver::CloseToCar(double speed_mph) {
 
     for (auto &other_car: sensor_fusion_) {
         if (other_car.d >= lane_no * 4 && other_car.d <= lane_no * 4 + 4) {
-            cout << "car: " << other_car.car_id << " with d: " << other_car.d
-                 << " is in our lane, and it will take us  "
-                 << meters_to_stop << " meters to stop" << endl;
+//            cout << "car: " << other_car.car_id << " with d: " << other_car.d
+//                 << " is in our lane, and it will take us  "
+//                 << meters_to_stop << " meters to stop" << endl;
 
             auto distance = other_car.s - model_->car_s;
             if (distance > 0 && distance < meters_to_stop) {
@@ -374,30 +375,12 @@ void CarDriver::FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last
     last_debug_->ref_yaw.angle_rad = *ref_yaw;
 }
 
-double CarDriver::get_ideal_speed() {
-//    // ensure we are not going to crash
-//    for (auto &other_car: sensor_fusion_) {
-//        auto distance = other_car.s - model_.car_s;
-//        if (distance > 0 && other_car.s - model_.car_s < 20) {
-//            cout << "Car is close!!!" << endl;
-//        }
-//    }
-
-    // return
-    return desired_speed_mph_;
-}
-
 std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed) {
     // max_acceleration is 10m/s^2
 
     const double min_diff = 0.5;    // mph difference
 
     vector<double> speed;
-//    speed.push_back(desired_speed_mph_);
-//    return speed;
-
-    // && fabs(cur_speed_mph - desired_speed_mph_) > min_diff
-
     const double max_a = 20.0;      // 10m/s * 60 * 60 / 1000 / 1.60934
 
     for (int i = 0; i < points_needed; i++){
@@ -421,7 +404,7 @@ std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double req
 }
 
 int CarDriver::GetLaneCosts() {
-    const auto lane_occupancy_cost = 0.3;
+//    const auto lane_occupancy_cost = 0.3;
 
     // the cost is based on
     // 1) Which lane can we go faster in?
@@ -448,7 +431,7 @@ int CarDriver::GetLaneCosts() {
     // time = distance meters /difference in speed (in meters)
 
     double catchup_distance[3];
-    auto our_speed_mps = speed_mph_to_mtr_per_sec(desired_speed_mph_);
+    auto our_speed_mps = speed_mph_to_mtr_per_sec(ideal_speed_mph_);
 
     for (int i = 0; i < 3; i++) {
         CartesianPoint car_in_body_frame = TranslateXYToBodyFrame(lane_wise_closest[i]->x, lane_wise_closest[i]->y);
