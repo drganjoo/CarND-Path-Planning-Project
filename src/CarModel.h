@@ -71,17 +71,29 @@ struct FrenetPoint {
 };
 
 struct CarModel {
-    const double car_x;
-    const double car_y;
-    const double car_s;
-    const double car_d;
-    const double car_yaw;
-    const double cur_speed_mph;
+    double car_x;
+    double car_y;
+    double car_s;
+    double car_d;
+    double car_yaw;
+    double cur_speed_mph;
 
     CartesianPoint ref_prev_prev;
     CartesianPoint ref_prev;
     double ref_yaw;
     double ref_speed_mph;
+
+    CarModel() :
+            car_x(0),
+            car_y(0),
+            car_s (0),
+            car_d (0),
+            car_yaw (0),
+            cur_speed_mph (0),
+            ref_yaw (0),
+            ref_speed_mph (0)
+    {
+    }
 
     CarModel(const json &j) :
             car_x(j["x"]),
@@ -93,6 +105,21 @@ struct CarModel {
     {
         ref_yaw = 0.0;
         ref_speed_mph = 0.0;
+    }
+
+    CartesianPoint TranslateXYToBodyFrame(const double x, const double y) const{
+        const double origin_x = ref_prev.x;
+        const double origin_y = ref_prev.y;
+        // shift back to start of car
+        double x_translated = x - origin_x;
+        double y_translated = y - origin_y;
+
+        CartesianPoint pt_in_body;
+
+        pt_in_body.x = x_translated * cos(0 - ref_yaw) - y_translated * sin(0-ref_yaw);
+        pt_in_body.y = x_translated * sin(0 - ref_yaw) + y_translated * cos(0-ref_yaw);
+
+        return pt_in_body;
     }
 };
 
