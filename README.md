@@ -4,6 +4,11 @@ Self-Driving Car Engineer Nanodegree Program
 ## Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
 
+## Overview of classes
+
+**CarDriver** - Most of the code of driving is in here
+**CostCalculator** - Cost calculation is in this class
+
 ## Driving States
 
 Although a FSM has been implemented but I am not happy with the way it has been defined. A lot of code had to be replicated in different states e.g. in "lane change" and "prepare for lane change" had to keep checking if the car in front had moved out
@@ -16,6 +21,7 @@ If there is no car in front, keep going at desired_speed. In case there is a car
 
 ### Prepare Lane Change State
 
+Code defined in: ```void CarDriver::PrepareLaneChangeState()```
 
 ### Shortcomings
 

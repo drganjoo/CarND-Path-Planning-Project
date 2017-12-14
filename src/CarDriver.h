@@ -13,6 +13,11 @@
 #include "spline.h"
 #include "CostCalculator.h"
 
+const auto CL_BEHIND_DISTANCE_SECS = 7.0;
+const auto CL_FRONT_DISTANCE_SECS = 1.0;
+const auto CL_FRONT_ABORT_SECS = 2.0;
+const auto CL_SLOW_DOWN_FACTOR = 0.75;      // there is no space in the target lane, slow down by this much factor to create some room
+
 using json = nlohmann::json;
 
 class CarDriver {
@@ -58,6 +63,10 @@ private:
     bool DriveWhileKeepingDistance();
 
 //    double GetLaneSpeedMph(int lane_no);
+
+    bool TargetLaneFrontOk(int target_lane_no);
+    bool TargetLaneBackOk(int target_lane_no);
+    bool EnoughDistanceInFront(int lane_no);
 
 private:
     //std::unique_ptr<CarModel> model_;

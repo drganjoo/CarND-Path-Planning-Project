@@ -51,8 +51,6 @@ void CarDriver::UpdateModel(json &j) {
         v.s = sensor[5];
         v.d = sensor[6];
 
-//        cout << v.car_id << "," << v.d << "," << v.s << endl;
-
         sensor_fusion_.push_back(v);
     }
 
@@ -64,22 +62,6 @@ void CarDriver::UpdateModel(json &j) {
 
     cost_ = unique_ptr<CostCalculator>(new CostCalculator(sensor_fusion_, model_));
     state_();
-
-//    cout << "******************************" << endl;
-//
-//    for (int i = 0; i < 3; i++) {
-//        auto car = cost_->GetClosestCarInFront(i);
-//        cout << "Lane: " << i;
-//
-//        if (car) {
-//            cout << " id:" << car->car_id;
-//        }
-//        else {
-//            cout << " NO CAR!!!";
-//        }
-//
-//        cout << endl;
-//    }
 }
 
 
@@ -111,9 +93,6 @@ void CarDriver::PrepareLaneChangeState() {
         if (lane_costs[i] < lane_costs[best_lane_no])
             best_lane_no = i;
     }
-
-    // TEMP
-//    best_lane_no = desired_lane_no_;
 
     if (desired_lane_no_ == best_lane_no) {
         bool car_close = DriveWhileKeepingDistance();
@@ -152,9 +131,6 @@ void CarDriver::PrepareLaneChangeState() {
 }
 
 void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
-    // TODO: keep on checking in case, best_lane_no is no longer the best one
-    // we will switch back to the state of driving in lane
-
     last_debug_->state = __FUNCTION__;
 
     // 1) Enough distance from the car in front in current lane
@@ -163,163 +139,129 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
 
     auto cur_lane_no = (int) (model_.car_d / 4);
 
-    cout << "Change Lane State. Current Lane #: " << cur_lane_no << endl;
+    cout << "CHANGE_LANE: cur_lane_no = " << cur_lane_no << " target_lane_no = " << target_lane_no;
 
     if (cur_lane_no == target_lane_no) {
-        // lane change is done
         cout << "Lane changed" << endl;
-
-        last_debug_->debug_message = "Lane change complete, going back to keeplanestate";
 
         state_ = bind(&CarDriver::KeepLaneState, this);
         state_();
+
+        last_debug_->debug_message = "Lane change complete, going back to keeplanestate";
+
         return;
     }
 
-    SpeedDistanceCostCalculator sd_calc(sensor_fusion_, model_);
 
-    double distance_front;
-    const auto req_distance_front = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 2;
-    auto front_vehicle_in_target = cost_->GetClosestCarInFront(target_lane_no);
+    bool front_ok = TargetLaneFrontOk(target_lane_no);
+    bool back_ok = false;
 
-    if (front_vehicle_in_target)
-        distance_front = sd_calc.GetDistaneToCarMeters(front_vehicle_in_target);
-    else
-        distance_front = numeric_limits<double>::max();
+    if (front_ok) {
 
-    if (distance_front < req_distance_front) {
+        back_ok = TargetLaneBackOk(target_lane_no);
 
-        cout << "TL " << target_lane_no << ", CF is very close. " << distance_front << " required: " << req_distance_front << endl;
+        if (back_ok) {
 
-        // we can overtake and get in front or
-        // we can wait for the car behind us to pass
-        // for time being lets just keep going at same speed_mps and decide later
-        //auto lane_speed = GetLaneSpeedMph(target_lane_no);
-        auto target_lane_speed = sd_calc.GetLaneSpeedMph(target_lane_no) * 0.75;
-        auto cur_lane_speed = sd_calc.GetLaneSpeedMph(cur_lane_no);
-        double driving_speed_mph = min(target_lane_speed, cur_lane_speed);
-
-        if (target_lane_speed < cur_lane_speed) {
-            // in case we are going too slow just to change lanes, and now
-            // there is enough distance for us to speed up while keeping car in
-            // current lane, then might as well just continue here and abort
-            // lane change decision
-            auto vehicle_in_front = cost_->GetClosestCarInFront(cur_lane_no);
-
-            if (vehicle_in_front) {
-                double last_speed = model_.ref_speed_mph;
-                double dead_stop_distance = cost_->GetDistanceToDeadStop(last_speed);
-                double front_distance = cost_->GetDistaneToCarMeters(vehicle_in_front);
-
-                if (front_distance > dead_stop_distance * 2) {
-                    state_ = bind(&CarDriver::KeepLaneState, this);
-                    state_();
-                    return;
-                }
-            }
-        }
-        else {
-            driving_speed_mph = target_lane_speed;
-        }
-
-        DriveAtSpeed(driving_speed_mph);
-
-        cout << "TL " << target_lane_no << ", Speed: " << target_lane_speed << " CL Speed:" << cur_lane_speed
-             << " driving at: " << driving_speed_mph << endl;
-
-        last_debug_->desired_speed_mph = driving_speed_mph;
-        last_debug_->desired_lane_no = desired_lane_no_;
-
-        stringstream ss;
-        ss << "Cant change lane, car in front in target lane: " << target_lane_no << ", with id: " << front_vehicle_in_target->car_id;
-        last_debug_->debug_message = ss.str();
-    }
-    else {
-
-        cout << "TL " << target_lane_no << ", CF distance is OK. " << distance_front << " required: " << req_distance_front << endl;
-
-        bool behind_ok = true;
-        const auto SECONDS_DISTANCE = 7.0;
-        const auto behind_vehicle = cost_->GetClosestCarBehind(target_lane_no);
-
-        double bv_s_after = 0;
-        double our_s_after = 0;
-        double bv_speed_mps = 0;
-
-        if (behind_vehicle) {
-
-            bv_speed_mps = behind_vehicle->speed_mps();
-            bv_s_after = behind_vehicle->s + bv_speed_mps * SECONDS_DISTANCE;
-            bv_s_after += 2; // length of the car is added
-
-            // since we won't be going straight, lets just assume half of our speed instead of full
-            const auto our_speed_mps = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 0.5;
-            our_s_after = model_.car_s + our_speed_mps;
-
-            behind_ok = bv_s_after < our_s_after;
-        }
-
-        if (!behind_ok) {
-
-            // lets see if we can speed up and then change lanes
-            bool speed_up = false;
-
-            auto vehicle_in_front = cost_->GetClosestCarInFront(cur_lane_no);
-
-            if (vehicle_in_front) {
-                double last_speed = model_.ref_speed_mph;
-                double dead_stop_distance = cost_->GetDistanceToDeadStop(last_speed);
-                double front_distance = cost_->GetDistaneToCarMeters(vehicle_in_front);
-
-                if (front_distance > dead_stop_distance) {
-                    DriveAtSpeed(ideal_speed_mph_);
-                    speed_up = true;
-                }
-            }
-
-            if (!speed_up){
-
-                cout << "TL " << target_lane_no << ", CB is very close. In short while it will be at car_s:"
-                     << bv_s_after << " we would be at car_s: " << our_s_after << endl;
-
-                // wait for the car to pass us
-                const auto cur_lane_speed = sd_calc.GetLaneSpeedMph(cur_lane_no);
-                const auto speed_for_waiting_mph = max(25.0, speed_mtr_per_sec_to_mph(bv_speed_mps) * 0.5);
-                const auto driving_speed_mph = min(speed_for_waiting_mph, cur_lane_speed);
-
-                DriveAtSpeed(driving_speed_mph);
-
-                cout << "TL " << target_lane_no << ", Waiting for car behind."
-                     << " Behind Speed: " << bv_speed_mps
-                     << " Wait Speed: " << speed_for_waiting_mph
-                     << " CL Speed:" << cur_lane_speed
-                     << " driving at: " << driving_speed_mph << endl;
-
-                stringstream ss;
-                ss << "Cant change lane, car at back in target lane: " << target_lane_no << ", with id: "
-                   << behind_vehicle->car_id;
-                last_debug_->debug_message = ss.str();
-                last_debug_->desired_speed_mph = speed_for_waiting_mph;
-            }
-        }
-        else {
-
-            cout << "TL " << target_lane_no << ": SAFE " << endl
-                 << "  Behind S After: " << bv_s_after
-                 << " Our S After: " << our_s_after << endl;
-            cout << "  Distance Front: " << distance_front
-                 << "  Required : " << req_distance_front << endl;
-
-            // change lanes as it is safe to do so
             desired_lane_no_ = target_lane_no;
 
             const auto lane_change_speed_mph = min(ideal_speed_mph_, MAX_LANE_CHANGE_SPEED_MPH);
             DriveAtSpeed(lane_change_speed_mph, 50, 40);
 
+            cout << ", SAFE!!!, switching to lane: " << target_lane_no << endl;
+
             last_debug_->debug_message = "Ok to switch over to lane";
             last_debug_->desired_speed_mph = ideal_speed_mph_;
+
+            return;
         }
     }
+
+
+    // either front or back is not ok
+    if (EnoughDistanceInFront(cur_lane_no)) {
+        cout << ", big distance in front, aborting lane change";
+
+        state_ = bind(&CarDriver::KeepLaneState, this);
+        state_();
+
+        return;
+    }
+
+
+    if (!front_ok) {
+        // there is a car in the target lane that is too close for us to change lanes
+        // slow down and create some distance (BUT if we are going so slow that now
+        // car in front of current lane is quite far then speed up, stay here and abort lane change)
+
+        auto target_lane_speed = cost_->GetLaneSpeedMph(target_lane_no);
+        auto cur_lane_speed = cost_->GetLaneSpeedMph(cur_lane_no);
+
+        double driving_speed_mph = min(target_lane_speed * CL_SLOW_DOWN_FACTOR, cur_lane_speed);
+
+        DriveAtSpeed(driving_speed_mph);
+
+        cout << ", car in front in target, slowing down to = " << driving_speed_mph << " mph " << endl;
+
+        last_debug_->desired_speed_mph = driving_speed_mph;
+        last_debug_->desired_lane_no = desired_lane_no_;
+
+        stringstream ss;
+        ss << "Can't change lane, car in front in target lane: " << target_lane_no;
+        last_debug_->debug_message = ss.str();
+    }
+    else {
+        // behind is not ok otherwise we would have never landed here
+        assert(!back_ok);
+
+        // lets see if we can speed up and then change lanes
+        bool speed_up = true;
+
+        auto vehicle_in_front = cost_->GetClosestCarInFront(cur_lane_no);
+        if (vehicle_in_front) {
+            double last_speed = model_.ref_speed_mph;
+            double dead_stop_distance = cost_->GetDistanceToDeadStop(last_speed);
+            double front_distance = cost_->GetDistaneToCarMeters(vehicle_in_front);
+
+            speed_up = front_distance > dead_stop_distance * 1.5;
+        }
+
+        if (speed_up) {
+            cout << ", behind car too close, speeding up as we have space up front" << endl;
+
+            DriveAtSpeed(ideal_speed_mph_);
+        }
+        else {
+            auto vehicle_behind_target = cost_->GetClosestCarBehind(target_lane_no);
+
+            // very rare case that there is no vehicle behind us and still we end up here
+            if (!vehicle_behind_target) {
+
+                cout << ", behind car too close, BUT NO vehicle there so just driving here" << endl;
+
+                DriveAtSpeed(ideal_speed_mph_);
+                return;
+            }
+
+            // wait for the car to pass us
+            const auto cur_lane_speed = cost_->GetLaneSpeedMph(cur_lane_no);
+            const auto bv_speed_mph = speed_mtr_per_sec_to_mph(vehicle_behind_target->speed_mps());
+
+            // half of behind vehicle or 25mph, whichever is higher
+            const auto speed_for_waiting_mph = max(25.0, bv_speed_mph * 0.5);
+            const auto driving_speed_mph = min(speed_for_waiting_mph, cur_lane_speed);
+
+            DriveAtSpeed(driving_speed_mph);
+
+            cout << ", Waiting for car behind, coming at speed = " << bv_speed_mph
+                 << " driving at = " << driving_speed_mph << endl;
+
+            stringstream ss;
+            ss << "Cant change lane, car at back in target lane: " << target_lane_no << ", with id: "
+               << vehicle_behind_target->car_id;
+            last_debug_->debug_message = ss.str();
+            last_debug_->desired_speed_mph = speed_for_waiting_mph;
+        }
+   }
 }
 
 
@@ -683,4 +625,61 @@ void CarDriver::InitState() {
         cout << "Starting off with lane: " << desired_lane_no_ << endl;
         state_ = bind(&CarDriver::KeepLaneState, this);
     }
+}
+
+bool CarDriver::TargetLaneFrontOk(int target_lane_no) {
+    SpeedDistanceCostCalculator sd_calc(sensor_fusion_, model_);
+
+    double distance_front_target;
+    const auto req_distance_front = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 2;
+    auto front_vehicle_in_target = cost_->GetClosestCarInFront(target_lane_no);
+
+    if (front_vehicle_in_target)
+        distance_front_target = sd_calc.GetDistaneToCarMeters(front_vehicle_in_target);
+    else
+        distance_front_target = numeric_limits<double>::max();
+
+    return distance_front_target > req_distance_front;
+}
+
+
+bool CarDriver::TargetLaneBackOk(int target_lane_no) {
+    bool behind_ok = true;
+    const auto behind_vehicle = cost_->GetClosestCarBehind(target_lane_no);
+
+    double bv_s_after = 0;
+    double our_s_after = 0;
+    double bv_speed_mps = 0;
+
+    if (behind_vehicle) {
+        bv_speed_mps = behind_vehicle->speed_mps();
+        bv_s_after = behind_vehicle->s + bv_speed_mps * CL_BEHIND_DISTANCE_SECS;
+        bv_s_after += 2; // length of the car is added
+
+        // since we won't be going straight, we would be a little behind had we gone
+        // directly
+        const auto our_speed_mps = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 0.75;
+        our_s_after = model_.car_s + our_speed_mps;
+
+        behind_ok = bv_s_after < our_s_after;
+    }
+
+    return behind_ok;
+}
+
+
+bool CarDriver::EnoughDistanceInFront(int lane_no) {
+
+    bool abort = true;
+    auto vehicle_in_front = cost_->GetClosestCarInFront(lane_no);
+
+    if (vehicle_in_front) {
+        double last_speed = model_.ref_speed_mph;
+        double dead_stop_distance = cost_->GetDistanceToDeadStop(last_speed);
+        double front_distance = cost_->GetDistaneToCarMeters(vehicle_in_front);
+
+        abort = front_distance > dead_stop_distance * CL_FRONT_ABORT_SECS;
+    }
+
+    return abort;
 }
