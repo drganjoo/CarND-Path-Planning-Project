@@ -60,9 +60,13 @@ When a decision has been made to change lanes, distance to car in front (in the 
 
 Car's current speed is estimated by either using cur_speed_mph sent by the simulator or in case previous points are sent, then the difference between the last two points is considered as the speed of the car.
 
+All previous points sent by the simulator are used and more are added to complete 50 points. A spline is generated using the last two points of the previous set and then adding three more points, which are 30, 60, and 90 meters away from the car's current position. The spline is generated in the body frame of reference.
+
 A function ```GetPerPointSpeed``` is called to figure out at each of the 50 points, what should be the speed of the car. This function takes into account maximum acceleration allowed.
 
-In body frame of reference, 50 points are generated, which basically tell where the car would be at each 20ms interval starting from current x,y coordinate. The current x,y are considered as 0,0 and then each consecutive point is set at a distance, which is proportional to the speed of the car for that section. Speed is converted into meters per sec and then multiplied by 0.02 (20ms Δt) to figure out the distance car will travel in 20ms. Then the points are converted from body frame of reference to global x,y coordinate space.
+In body frame of reference, 50 points are generated, which basically tell where the car would be at each 20ms interval starting from current x,y coordinate. The current x,y is considered as 0,0 and then each consecutive point is set at a distance, which is proportional to the speed of the car for that section. Speed is converted into meters per sec and then multiplied by 0.02 (20ms Δt) to figure out the distance car will travel in 20ms. Y coordinate is figured out by passing the X coordinate to the generated spline. 
+
+The points are eventually converted from body frame of reference to global x,y coordinate space.
 
 ```
     for (int i = 0; i < 50 - prev_size; i++) {
