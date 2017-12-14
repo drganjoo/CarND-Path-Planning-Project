@@ -35,6 +35,7 @@ public:
 //    std::vector<DebugValues> debug_packets_;
 
 private:
+    void InitState();
     void KeepLaneState();
     void PrepareLaneChangeState();
     void ChangeLaneState(int goto_lane_no, int best_lane_no);
@@ -54,6 +55,7 @@ private:
     double CostSpeed(double intended_speed, double target_speed);
     double CostDrivingInCurrentLane(double *lane_speed_ptr);
     void FigureOutSpeedFromPrevious();
+    bool DriveWhileKeepingDistance();
 
 //    double GetLaneSpeedMph(int lane_no);
 

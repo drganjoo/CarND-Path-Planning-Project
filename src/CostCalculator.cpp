@@ -112,16 +112,16 @@ double SpeedDistanceCostCalculator::CalculateCost(int lane_no, double *speed_mph
     auto other_car_speed_mps = closest_car->speed_mps();
     auto delta_speed = our_speed_mps - other_car_speed_mps;
 
-    auto catchup_distance = distance_meters / delta_speed;
+    auto catchup_seconds = distance_meters / delta_speed;
     const auto SECS_TO_ZERO_COST = 6.0;
-    auto catchup_seconds_percent = catchup_distance / our_speed_mps / SECS_TO_ZERO_COST;
+    auto catchup_seconds_percent = catchup_seconds / SECS_TO_ZERO_COST;
 
     auto cost = exp(-abs(catchup_seconds_percent));
 
     cout << lane_no << ", " << distance_meters
             << ", " << our_speed_mps
             << ", " << other_car_speed_mps
-            << ", " << catchup_distance
+            << ", " << catchup_seconds
             << ", " << catchup_seconds_percent
             << ", " << cost << endl;
 

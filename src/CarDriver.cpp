@@ -17,7 +17,8 @@ vector<double> getFrenet(double x, double y, double theta);
 CarDriver::CarDriver() {
     end_path_s_ = 0.0;
     end_path_d_ = 0.0;
-    state_ = bind(&CarDriver::KeepLaneState, this);
+//    state_ = bind(&CarDriver::KeepLaneState, this);
+    state_ = bind(&CarDriver::InitState, this);
 }
 
 
@@ -111,19 +112,13 @@ void CarDriver::PrepareLaneChangeState() {
             best_lane_no = i;
     }
 
-    // TEMP to stop changing lanes and see
-    best_lane_no = desired_lane_no_;
+    // TEMP
+//    best_lane_no = desired_lane_no_;
 
     if (desired_lane_no_ == best_lane_no) {
-
-        // TODO: Figure out if we can change lane without crashing OR jerking
-        // if yes, then switch to lane change state after keeping it in intended_lane_
-        // that state will just try to return a path that is smooth
-
-        cout << "Staying in lane: " << desired_lane_no_
-             << " at speed: " << lane_speeds[best_lane_no] << endl;
-
-        DriveAtSpeed(lane_speeds[best_lane_no]);
+        bool car_close = DriveWhileKeepingDistance();
+        if (!car_close)
+            state_ = bind(&CarDriver::KeepLaneState, this);
 
         last_debug_->desired_speed_mph = lane_speeds[best_lane_no];
         last_debug_->desired_lane_no = desired_lane_no_;
@@ -168,6 +163,8 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
 
     auto cur_lane_no = (int) (model_.car_d / 4);
 
+    cout << "Change Lane State. Current Lane #: " << cur_lane_no << endl;
+
     if (cur_lane_no == target_lane_no) {
         // lane change is done
         cout << "Lane changed" << endl;
@@ -183,10 +180,10 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
 
     double distance_front;
     const auto req_distance_front = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 2;
-    auto front_vehicle = cost_->GetClosestCarInFront(target_lane_no);
+    auto front_vehicle_in_target = cost_->GetClosestCarInFront(target_lane_no);
 
-    if (front_vehicle)
-        distance_front = sd_calc.GetDistaneToCarMeters(front_vehicle);
+    if (front_vehicle_in_target)
+        distance_front = sd_calc.GetDistaneToCarMeters(front_vehicle_in_target);
     else
         distance_front = numeric_limits<double>::max();
 
@@ -198,11 +195,34 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
         // we can wait for the car behind us to pass
         // for time being lets just keep going at same speed_mps and decide later
         //auto lane_speed = GetLaneSpeedMph(target_lane_no);
-        auto target_lane_speed = sd_calc.GetLaneSpeedMph(target_lane_no);
+        auto target_lane_speed = sd_calc.GetLaneSpeedMph(target_lane_no) * 0.75;
         auto cur_lane_speed = sd_calc.GetLaneSpeedMph(cur_lane_no);
-        auto driving_speed_mph = min(target_lane_speed, cur_lane_speed);
+        double driving_speed_mph = min(target_lane_speed, cur_lane_speed);
 
-        DriveAtSpeed(driving_speed_mph );
+        if (target_lane_speed < cur_lane_speed) {
+            // in case we are going too slow just to change lanes, and now
+            // there is enough distance for us to speed up while keeping car in
+            // current lane, then might as well just continue here and abort
+            // lane change decision
+            auto vehicle_in_front = cost_->GetClosestCarInFront(cur_lane_no);
+
+            if (vehicle_in_front) {
+                double last_speed = model_.ref_speed_mph;
+                double dead_stop_distance = cost_->GetDistanceToDeadStop(last_speed);
+                double front_distance = cost_->GetDistaneToCarMeters(vehicle_in_front);
+
+                if (front_distance > dead_stop_distance * 2) {
+                    state_ = bind(&CarDriver::KeepLaneState, this);
+                    state_();
+                    return;
+                }
+            }
+        }
+        else {
+            driving_speed_mph = target_lane_speed;
+        }
+
+        DriveAtSpeed(driving_speed_mph);
 
         cout << "TL " << target_lane_no << ", Speed: " << target_lane_speed << " CL Speed:" << cur_lane_speed
              << " driving at: " << driving_speed_mph << endl;
@@ -211,7 +231,7 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
         last_debug_->desired_lane_no = desired_lane_no_;
 
         stringstream ss;
-        ss << "Cant change lane, car in front in target lane: " << target_lane_no << ", with id: " << front_vehicle->car_id;
+        ss << "Cant change lane, car in front in target lane: " << target_lane_no << ", with id: " << front_vehicle_in_target->car_id;
         last_debug_->debug_message = ss.str();
     }
     else {
@@ -547,9 +567,21 @@ std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double req
 //    return traffic_speed_mph_ ;
 //}
 
-void CarDriver::KeepLaneState() {
 
-    bool state_changed = false;
+void CarDriver::KeepLaneState() {
+    bool car_close = DriveWhileKeepingDistance();
+    if (car_close)
+        state_ = bind(&CarDriver::PrepareLaneChangeState, this);
+
+    last_debug_->desired_speed_mph = ideal_speed_mph_;
+    last_debug_->desired_lane_no = desired_lane_no_;
+    last_debug_->state = __FUNCTION__;
+}
+
+
+bool CarDriver::DriveWhileKeepingDistance() {
+    bool car_close = false;
+    auto speed_to_maintain_mph = ideal_speed_mph_;
     auto vehicle_in_front = cost_->GetClosestCarInFront(desired_lane_no_);
 
     if (vehicle_in_front) {
@@ -561,36 +593,56 @@ void CarDriver::KeepLaneState() {
 
             auto front_car_speed = vehicle_in_front->speed_mps();
 
+            double speed_mps;
+            if (front_distance < dead_stop_distance * 0.5) {
+                cout << "Half speed" << endl;
+                speed_mps = front_car_speed * 0.5;
+            } else
+                speed_mps = front_car_speed;
+
+            speed_to_maintain_mph = speed_mtr_per_sec_to_mph(speed_mps);
+
             stringstream ss;
             ss << "Car is close to car in front, with id: " << vehicle_in_front->car_id
-                 << " DS: " << dead_stop_distance
-                 << " FC->car_s " << vehicle_in_front->s
-                 << " FC->distance " << cost_->GetDistaneToCarMeters(vehicle_in_front)
-                 << " FC->speed " << speed_mtr_per_sec_to_mph(front_car_speed)
-                 << endl;
+               << " DS: " << dead_stop_distance
+               << " FC->car_s " << vehicle_in_front->s
+               << " FC->distance " << cost_->GetDistaneToCarMeters(vehicle_in_front)
+               << " FC->speed " << speed_mtr_per_sec_to_mph(front_car_speed)
+               << endl;
             cout << ss.str();
             last_debug_->debug_message = ss.str();
 
-            double speed_to_drive_mps;
-            if (front_distance < dead_stop_distance * 0.5) {
-                cout << "Half speed" << endl;
-                speed_to_drive_mps = front_car_speed * 0.5;
-            }
-            else
-                speed_to_drive_mps = front_car_speed;
-
-            DriveAtSpeed(speed_mtr_per_sec_to_mph(speed_to_drive_mps));
-            state_changed = true;
-
-            // temp
-//            state_ = bind(&CarDriver::PrepareLaneChangeState, this);
+            car_close = true;
         }
     }
 
-    if (!state_changed)
-        DriveAtSpeed(ideal_speed_mph_);
+    DriveAtSpeed(speed_to_maintain_mph);
 
-    last_debug_->desired_speed_mph = ideal_speed_mph_;
-    last_debug_->desired_lane_no = desired_lane_no_;
-    last_debug_->state = __FUNCTION__;
+    return car_close;
+}
+
+void CarDriver::InitState() {
+//    int closest_lane = model_.car_d / 4;
+    int closest_lane = -1;
+    int closest_distance = 999999;
+
+    for (int i = 0; i < 3; i++) {
+        auto car = cost_->GetClosestCarInFront(i);
+        if (car) {
+            double front_distance = cost_->GetDistaneToCarMeters(car);
+
+            if (closest_distance > front_distance) {
+                cout << "Found a car closer in lane: " << i << " at distance: " << front_distance << endl;
+
+                closest_distance = front_distance;
+                closest_lane = i;
+            }
+        }
+    }
+
+    if (closest_lane >= 0) {
+        desired_lane_no_ = closest_lane;
+        cout << "Starting off with lane: " << desired_lane_no_ << endl;
+        state_ = bind(&CarDriver::KeepLaneState, this);
+    }
 }

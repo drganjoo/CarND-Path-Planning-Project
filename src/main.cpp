@@ -221,7 +221,7 @@ int main() {
 
     CarDriver driver;
     driver.set_ideal_speed(49.0);
-    driver.set_desired_lane(2);
+//    driver.set_desired_lane(2);
 
     h.onMessage([&driver, &log](
             uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
