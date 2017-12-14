@@ -255,7 +255,7 @@ c.noalias() += 2 * a.transpose() * b;
 However, the noalias mechanism does not cover all the features of the old .lazy(). Indeed, in some extremely rare cases,
 it might be useful to explicit request for a lay product, i.e., for a product which will be evaluated one coefficient at once, on request,
 just like any other expressions. To this end you can use the MatrixBase::lazyProduct() function, however we strongly discourage you to
-use it unless you are sure of what you are doing, i.e., you have rigourosly measured a speed improvement.
+use it unless you are sure of what you are doing, i.e., you have rigourosly measured a speed_mps improvement.
 
 \section AlignMacros Alignment-related macros
 

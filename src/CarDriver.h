@@ -15,8 +15,6 @@
 
 using json = nlohmann::json;
 
-enum class DrivingState { KeepDrivingInLane, PrepareLaneChange, ChangeLane };
-
 class CarDriver {
 public:
     CarDriver();
@@ -39,12 +37,13 @@ public:
 private:
     void KeepLaneState();
     void PrepareLaneChangeState();
+    void ChangeLaneState(int goto_lane_no, int best_lane_no);
 
 //    void DoState();
     void FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last_last_pt, double *ref_yaw);
 //    double HowManyMetersTravelledIn20ms(double cur_speed_mph);
-    std::vector<double> DriveAtSpeed(double speed_mph);
-    tk::spline GetPathToFollow();
+    std::vector<double> DriveAtSpeed(double speed_mph, int spline_distance_start = 30, int spline_distance_inc = 30);
+    tk::spline GetPathToFollow(int spline_distance_start, int spline_distance_inc);
     bool CloseToCar(double speed);
     std::vector<double> GenerateTrajectory(double cur_speed_mph, double required_speed_mph, const tk::spline &path_spline);
     double GetMetersToStop(double speed_mph);
@@ -54,12 +53,8 @@ private:
 
     double CostSpeed(double intended_speed, double target_speed);
     double CostDrivingInCurrentLane(double *lane_speed_ptr);
-    double CostCatchupDistance(int lane_no);
 
-    double GetLaneSpeedMph(int lane_no);
-    double GetDistaneToCarMeters(const VehicleSensed *car);
-
-
+//    double GetLaneSpeedMph(int lane_no);
 
 private:
     //std::unique_ptr<CarModel> model_;

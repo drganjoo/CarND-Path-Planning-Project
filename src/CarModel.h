@@ -20,6 +20,11 @@ struct VehicleSensed {
     double y_dot;
     double s;
     double d;
+
+    double speed_mps() const {
+        auto velocity = sqrt(x_dot * x_dot + y_dot * y_dot);
+        return velocity;
+    }
 };
 
 struct CartesianPoint {
@@ -157,6 +162,9 @@ struct DebugValues {
     DebugRefYaw ref_yaw;
     double desired_speed_mph;
     int desired_lane_no;
+    int target_lane_no;
+    std::string state;
+    std::string debug_message;
 
     DebugValues(const CarModel &init_model) :
             model(init_model)
@@ -164,6 +172,7 @@ struct DebugValues {
         acq_time = std::chrono::system_clock::now();
         desired_speed_mph = -1;
         desired_lane_no = -1;
+        target_lane_no = -1;
     }
 };
 

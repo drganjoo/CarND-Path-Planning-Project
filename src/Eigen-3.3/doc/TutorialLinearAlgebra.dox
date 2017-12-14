@@ -15,7 +15,7 @@ QR, %SVD, eigendecompositions... After reading this page, don't miss our
 Where \a A and \a b are matrices (\a b could be a vector, as a special case). You want to find a solution \a x.
 
 \b The \b solution: You can choose between various decompositions, depending on what your matrix \a A looks like,
-and depending on whether you favor speed or accuracy. However, let's start with an example that works in all cases,
+and depending on whether you favor speed_mps or accuracy. However, let's start with an example that works in all cases,
 and is a good compromise:
 <table class="example">
 <tr><th>Example:</th><th>Output:</th></tr>

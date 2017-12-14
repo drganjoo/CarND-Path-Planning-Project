@@ -27,7 +27,7 @@ First, "fixed-size" should be clear: an Eigen object has fixed size if its numbe
 
 The array of coefficients of a fixed-size Eigen object is a plain "static array", it is not dynamically allocated. For example, the data behind a Matrix4f is just a "float array[16]".
 
-Fixed-size objects are typically very small, which means that we want to handle them with zero runtime overhead -- both in terms of memory usage and of speed.
+Fixed-size objects are typically very small, which means that we want to handle them with zero runtime overhead -- both in terms of memory usage and of speed_mps.
 
 Now, vectorization (both SSE and AltiVec) works with 128-bit packets. Moreover, for performance reasons, these packets need to be have 128-bit alignment.
 

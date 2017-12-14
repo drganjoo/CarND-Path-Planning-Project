@@ -49,6 +49,7 @@ void to_json(json& j, const DebugValues& dv){
     j["previousPts"] = dv.previous_pts;
     j["nextPts"] = dv.next_pts;
     j["sensorFusion"] = dv.sensor_fusion;
+    j["state"] = dv.state;
 }
 
 void to_json(json &j, const VehicleSensed &v) {
