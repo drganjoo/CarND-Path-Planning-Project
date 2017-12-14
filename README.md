@@ -142,7 +142,7 @@ Checks are made to make sure lane can be switched safely. There should be enough
 
 ### Shortcomings
 
-1) Distance calcualtion is not very accurate. Earlier I had tried using XY body frame to calculate distance from the car to other vehicles but that wasn't accurate:
+1) Distance calcualtion is not very accurate. Earlier I had tried using XY body frame to calculate distance from the car to other vehicles but that wasn't accurate either:
 
 ```
 CartesianPoint car_in_body_frame = model_.TranslateXYToBodyFrame(car->x, car->y);
@@ -151,15 +151,21 @@ return distance_to_car;
 
 ```
 
-But finally settled on car_s sent by the simulator. However on curves this is not giving correct values.
+I've settled on car_s sent by the simulator. However on curves this is not giving correct values.
 
-2) Not at all happy with the way overall code has been written. It seems more like an if-then-else statements in each of the state functions. I would have rather followed the idea presented in the lectures that is to generate trajectories and then rate them on the basis of cost. e.g. instead of putting in checks for speeding up or slowing down for cars that are ahead / behind in the target lane, I would have liked to generate different trajectories, one for speeding up, one for slowing down, one for changing 2 lanes together etc. and then find out, which is more appropriate.
+```
+double CostCalculator::GetDistaneToCarMeters(const VehicleSensed *car) {
+    return car->s - model_.car_s;
+}
+```
 
-3) Emergency brakes have not been implemented. The driver always gives preference to non-jerks but some times car in front just stops.
+2) Not at all happy with the way overall code has been written. It seems more like an if-then-else statements in each of the state functions. I would have rather followed the idea presented in the lectures that is to generate trajectories and then rate them on the basis of cost. e.g. instead of putting in checks for speeding up or slowing down for cars that are ahead / behind in the target lane, I would have liked to generate different trajectories, one for speeding up, one for slowing down, one for changing 2 lanes together etc. and then find out, which is more appropriate. However, I couldn't come up with a suitable formula to find out intersections between trajectories and other cars present on the road. Specially when the distance to other vehicle is not at all accurate.
 
-4) Each car's behaviour should be predicted and then a decision should be made (or changed accordingly) as right when we are about to change lanes, car front can also decide to change lanes
+3) Emergency brakes have not been implemented. The driver always gives preference to non-jerks but some times car in front just stops in which case the car should also try to stop immediately.
 
-5) Rather than using an overall finite state machine, would have liked to implement a rule based system where each finite state's outcome should have been checked against some rule system e.g. not too close to other cars, not over speeding etc. 
+4) Rather than just considering the x,y (or s/d coordinate) of each car, its behaviour should be predicted and then it should be compared to see whether it is following the prediction or not. If it is not following the prediction, whatever decision we have taken should be re-evaluated.
+
+5) Rather than using an overall finite state machine, would have liked to implement a rule based system on top of FSM, where each finite state's outcome should have been checked against some rule  e.g. not too close to other cars, not over speeding etc.
 
 ## Debugging
 
