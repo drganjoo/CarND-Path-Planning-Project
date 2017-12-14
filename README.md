@@ -1,6 +1,6 @@
 [//]: # (Image References)
 [debugging]: ./writeup/debugging.png
-[car_video]: ./writeup/path_planning.mov
+[car_video]: ./writeup/path_planning_fast.mp4
 
 
 # CarND-Path-Planning-Project
@@ -8,6 +8,8 @@ Self-Driving Car Engineer Nanodegree Program
    
 ## Simulator.
 Term3 Simulator which contains the Path Planning Project can be downloaded from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
+
+![car_video]
 
 ## Point Generation
 
