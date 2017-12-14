@@ -89,11 +89,14 @@ double CostCalculator::GetLaneSpeedMph(int lane_no) {
     return traffic_speed_mph_ ;
 }
 
+
 double CostCalculator::GetDistaneToCarMeters(const VehicleSensed *car) {
-    CartesianPoint car_in_body_frame = model_.TranslateXYToBodyFrame(car->x, car->y);
-    const auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
-    return distance_to_car;
+//    CartesianPoint car_in_body_frame = model_.TranslateXYToBodyFrame(car->x, car->y);
+//    const auto distance_to_car = sqrt(car_in_body_frame.x * car_in_body_frame.x + car_in_body_frame.y * car_in_body_frame.y);
+//    return distance_to_car;
+    return car->s - model_.car_s;
 }
+
 
 double SpeedDistanceCostCalculator::CalculateCost(int lane_no, double *speed_mph) {
     auto closest_car = GetClosestCarInFront(lane_no);
@@ -134,7 +137,7 @@ double SpeedCostCalculator::CalculateCost(int lane_no, double *speed_mph) {
 
     auto closest_car = GetClosestCarInFront(lane_no);
     if (!closest_car) {
-        cout << "~~~~NO CAR IN Lane: " << lane_no << endl;
+//        cout << "~~~~NO CAR IN Lane: " << lane_no << endl;
 
         lane_speed = MAX_SPEED_MPH_;
         distance_meters = 999999;

@@ -15,12 +15,12 @@ double distance(double x1, double y1, double x2, double y2);
 vector<double> getFrenet(double x, double y, double theta);
 
 CarDriver::CarDriver() {
-    end_path_s_ = 0.0;
-    end_path_d_ = 0.0;
-//    state_ = bind(&CarDriver::KeepLaneState, this);
+#ifdef _DEBUG_DATA
     state_ = bind(&CarDriver::InitState, this);
+#else
+    state_ = bind(&CarDriver::KeepLaneState, this);
+#endif
 }
-
 
 std::array<std::vector<double>, 2> CarDriver::GetPath() {
     return {next_x_vals_, next_y_vals_};
@@ -29,13 +29,12 @@ std::array<std::vector<double>, 2> CarDriver::GetPath() {
 
 void CarDriver::UpdateModel(json &j) {
     model_ = CarModel(j);
+#ifdef _DEBUG_DATA
     last_debug_ = unique_ptr<DebugValues>(new DebugValues(model_));
+#endif
 
     previous_path_x_ = j["previous_path_x"];
     previous_path_y_ = j["previous_path_y"];
-    // Previous path's end s and d values
-    end_path_s_ = j["end_path_s"];
-    end_path_d_ = j["end_path_d"];
 
     // Sensor Fusion Data, a list of all other cars on the same side of the road.
     auto sensor_data = j["sensor_fusion"];
@@ -57,8 +56,10 @@ void CarDriver::UpdateModel(json &j) {
     FigureOutCarOrigin(&model_.ref_prev, &model_.ref_prev_prev, &model_.ref_yaw);
     FigureOutSpeedFromPrevious();
 
+#ifdef _DEBUG_DATA
     last_debug_->sensor_fusion = sensor_fusion_;
     last_debug_->debug_message.clear();
+#endif
 
     cost_ = unique_ptr<CostCalculator>(new CostCalculator(sensor_fusion_, model_));
     state_();
@@ -99,12 +100,12 @@ void CarDriver::PrepareLaneChangeState() {
         if (!car_close)
             state_ = bind(&CarDriver::KeepLaneState, this);
 
+#ifdef _DEBUG_DATA
         last_debug_->desired_speed_mph = lane_speeds[best_lane_no];
         last_debug_->desired_lane_no = desired_lane_no_;
         last_debug_->state = __FUNCTION__;
         last_debug_->debug_message = "Already in best lane to go in";
-
-        cout << "~~~~~~~~~~~~~~~~~~~~~~~~~~" << endl;
+#endif
     }
     else {
         cout << "Best is to switch to lane #: " << best_lane_no << " with cost: " << lane_costs[best_lane_no]
@@ -131,7 +132,9 @@ void CarDriver::PrepareLaneChangeState() {
 }
 
 void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
+#ifdef _DEBUG_DATA
     last_debug_->state = __FUNCTION__;
+#endif
 
     // 1) Enough distance from the car in front in current lane
     // 2) Enough distance from the closest car in front of us in the target lane
@@ -147,7 +150,9 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
         state_ = bind(&CarDriver::KeepLaneState, this);
         state_();
 
+#ifdef _DEBUG_DATA
         last_debug_->debug_message = "Lane change complete, going back to keeplanestate";
+#endif
 
         return;
     }
@@ -169,8 +174,10 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
 
             cout << ", SAFE!!!, switching to lane: " << target_lane_no << endl;
 
+#ifdef _DEBUG_DATA
             last_debug_->debug_message = "Ok to switch over to lane";
             last_debug_->desired_speed_mph = ideal_speed_mph_;
+#endif
 
             return;
         }
@@ -202,12 +209,14 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
 
         cout << ", car in front in target, slowing down to = " << driving_speed_mph << " mph " << endl;
 
+#ifdef _DEBUG_DATA
         last_debug_->desired_speed_mph = driving_speed_mph;
         last_debug_->desired_lane_no = desired_lane_no_;
 
         stringstream ss;
         ss << "Can't change lane, car in front in target lane: " << target_lane_no;
         last_debug_->debug_message = ss.str();
+#endif
     }
     else {
         // behind is not ok otherwise we would have never landed here
@@ -222,7 +231,7 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
             double dead_stop_distance = cost_->GetDistanceToDeadStop(last_speed);
             double front_distance = cost_->GetDistaneToCarMeters(vehicle_in_front);
 
-            speed_up = front_distance > dead_stop_distance * 1.5;
+            speed_up = front_distance > dead_stop_distance;
         }
 
         if (speed_up) {
@@ -255,11 +264,13 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
             cout << ", Waiting for car behind, coming at speed = " << bv_speed_mph
                  << " driving at = " << driving_speed_mph << endl;
 
+#ifdef _DEBUG_DATA
             stringstream ss;
             ss << "Cant change lane, car at back in target lane: " << target_lane_no << ", with id: "
                << vehicle_behind_target->car_id;
             last_debug_->debug_message = ss.str();
             last_debug_->desired_speed_mph = speed_for_waiting_mph;
+#endif
         }
    }
 }
@@ -287,15 +298,15 @@ std::vector<double> CarDriver::DriveAtSpeed(double speed_mph, int spline_distanc
         next_x_vals_.push_back(prev_x);
         next_y_vals_.push_back(prev_y);
 
+#ifdef _DEBUG_DATA
         last_debug_->previous_pts.push_back(CartesianPoint(prev_x, prev_y));
+#endif
     }
 
     FigureOutSpeedFromPrevious();
 
     auto speeds = GenerateTrajectory(model_.ref_speed_mph, speed_mph, path_spline);
     return speeds;
-//    if (CloseToCar(speed_between_points))
-//        state_ = DrivingState::PrepareLaneChangeState;
 }
 
 void CarDriver::FigureOutSpeedFromPrevious() {
@@ -341,8 +352,9 @@ std::vector<double> CarDriver::GenerateTrajectory(double cur_speed_mph, double r
         next_x_vals_.push_back(x_point);
         next_y_vals_.push_back(y_point);
 
+#ifdef _DEBUG_DATA
         last_debug_->next_pts.push_back(CartesianPoint(x_point, y_point));
-
+#endif
         if (speed_iterator != speeds.end())
             speed_between_points = *speed_iterator++;
     }
@@ -350,38 +362,6 @@ std::vector<double> CarDriver::GenerateTrajectory(double cur_speed_mph, double r
     return speeds;
 }
 
-
-
-// Shortcomming: it should have been based on the points that have been generated not
-// on the current car_d as previous path might have quite a few points left over
-
-bool CarDriver::CloseToCar(double speed_mph) {
-    bool car_close = false;
-    double meters_to_stop = GetMetersToStop(speed_mph);
-
-    auto lane_no = (int) (model_.car_d / 4);
-
-    for (auto &other_car: sensor_fusion_) {
-        if (other_car.d >= lane_no * 4 && other_car.d <= lane_no * 4 + 4) {
-            auto distance = other_car.s - model_.car_s;
-            if (distance > 0 && distance < meters_to_stop) {
-                car_close = true;
-                cout << "Car is close!!! Looks like it is travelling at " << other_car.x_dot << endl;
-
-                break;
-            }
-        }
-    }
-
-    return car_close;
-}
-
-double CarDriver::GetMetersToStop(double speed_mph) {
-    const auto max_decelerate_mps = 10.0;
-    const auto speed_mps = speed_mph_to_mtr_per_sec(speed_mph);
-    auto meters_to_stop = speed_mps * speed_mps / max_decelerate_mps + 5.0;
-    return meters_to_stop;
-}
 
 
 tk::spline CarDriver::GetPathToFollow(int start_distance, int increment) {
@@ -399,27 +379,14 @@ tk::spline CarDriver::GetPathToFollow(int start_distance, int increment) {
                          {model_.car_s + start_distance + increment, lane_no_d},
                          {model_.car_s + start_distance + increment * 2, lane_no_d}};
 
-    copy(begin(wp), end(wp), back_inserter(last_debug_->spline_addons));
-
     for (auto &point : wp) {
         CartesianPoint cp = (CartesianPoint) point;
         spline_pts_x.push_back(cp.x);
         spline_pts_y.push_back(cp.y);
     }
 
+
     for (int i = 0; i < spline_pts_x.size(); i++) {
-        // copy original spline points for debugging
-        last_debug_->spline_pts.push_back(CartesianPoint(spline_pts_x[i], spline_pts_y[i]));
-
-//        const double origin_x = model_.ref_prev.x;
-//        const double origin_y = model_.ref_prev.y;
-//        // shift back to start of car
-//        double x_translated = spline_pts_x[i] - origin_x;
-//        double y_translated = spline_pts_y[i] - origin_y;
-//
-//        auto x_in_car_frame = x_translated * cos(0 - model_.ref_yaw) - y_translated * sin(0-model_.ref_yaw);
-//        auto y_in_car_frame = x_translated * sin(0 - model_.ref_yaw) + y_translated * cos(0-model_.ref_yaw);
-
         auto pt_in_body = model_.TranslateXYToBodyFrame(spline_pts_x[i], spline_pts_y[i]);
         spline_pts_x[i] = pt_in_body.x;
         spline_pts_y[i] = pt_in_body.y;
@@ -428,16 +395,21 @@ tk::spline CarDriver::GetPathToFollow(int start_distance, int increment) {
     tk::spline s;
     s.set_points(spline_pts_x, spline_pts_y);
 
-    // generate debug points for spline curve
+#ifdef _DEBUG_DATA
+    // copy original spline generating points for debugging
+
+    copy(begin(wp), end(wp), back_inserter(last_debug_->spline_addons));
+    for (int i = 0; i < spline_pts_x.size(); i++) {
+        last_debug_->spline_pts.push_back(CartesianPoint(spline_pts_x[i], spline_pts_y[i]));
+    }
 
     double x = spline_pts_x[0];
-
     for (int i = 0; i < 50; i++) {
         double y = s(x);
         last_debug_->spline_generated_pts.push_back(CartesianPoint(x, y));
-
         x++;
     }
+#endif
 
     return s;
 }
@@ -450,7 +422,9 @@ void CarDriver::FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last
         *last_pt = CartesianPoint(model_.car_x, model_.car_y);
         *last_last_pt = CartesianPoint(model_.car_x - cos(*ref_yaw), model_.car_y - sin(*ref_yaw));
 
+#ifdef _DEBUG_DATA
         last_debug_->ref_yaw.based_on = YawCalculation::CarYaw;
+#endif
     }
     else {
         last_last_pt->x = previous_path_x_[prev_size - 2];
@@ -461,21 +435,21 @@ void CarDriver::FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last
 
         *ref_yaw = atan2(last_pt->y - last_last_pt->y, last_pt->x - last_last_pt->x);
 
+#ifdef _DEBUG_DATA
         last_debug_->ref_yaw.based_on = YawCalculation::PreviousPoints;
+#endif
     }
 
+#ifdef _DEBUG_DATA
     last_debug_->ref_yaw.ref_prev = *last_pt;
     last_debug_->ref_yaw.ref_prev_prev = *last_last_pt;
     last_debug_->ref_yaw.angle_rad = *ref_yaw;
+#endif
 }
 
 std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed) {
-    // max_acceleration is 10m/s^2
-
-    const double min_diff = 0.5;    // mph difference
 
     vector<double> speed;
-    const double max_a = 20.0;      // 10m/s * 60 * 60 / 1000 / 1.60934
 
     for (int i = 0; i < points_needed; i++){
         double diff = required_speed_mph - cur_speed_mph;
@@ -484,7 +458,7 @@ std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double req
         // we know v, have to find a needed to acheive this
 
         // how much do we need to accelerate to get to this speed_mps
-        auto a = min(max_a, diff) * 0.02;
+        auto a = min(MAX_ACCELERATION, diff) * 0.02;
         cur_speed_mph += a;
 
         speed.push_back(cur_speed_mph);
@@ -497,65 +471,17 @@ std::vector<double> CarDriver::GetPerPointSpeed(double cur_speed_mph, double req
     return speed;
 }
 
-//double CarDriver::GetLaneCosts(int current_lane, int intended_lane, int final_lane) {
-//    // TODO: for the time being stick to current -> intended lane only
-//
-//    // lane that has the farthest car (or no car) is the best lane to be in
-//    // but consider the other car's speed_mps as well. A car that is far away
-//    // but is dead stop might be worse than a car that is some what closer but going
-//    // faster than us.
-//    // formula to calculate the distance_meters to reach car:
-//    // time = distance_meters / difference in speed_mps (in meters)
-//
-//    auto closest_car = GetClosestCarInFront(intended_lane);
-//    auto distance_meters = GetDistaneToCarMeters(closest_car);
-//    auto our_speed_mps = speed_mph_to_mtr_per_sec(ideal_speed_mph_);
-//    auto other_car_speed_mps = closest_car->x_dot;
-//    auto delta_speed = our_speed_mps - other_car_speed_mps;
-//
-//    auto catchup_distance = distance_meters / delta_speed;
-//    auto cost = 1 - exp(-abs(catchup_distance));
-//    return cost;
-//}
-
-
-
-//double CarDriver::CostSpeed(double intended_speed, double target_speed) {
-//    double cost = (target_speed - intended_speed) / target_speed;
-//    if (cost < 0)
-//        cost = 0;
-//    return cost;
-//}
-
-//double CarDriver::CostDrivingInCurrentLane(double *lane_speed_ptr) {
-//    auto lane_no = (int) (model_.car_d / 4);
-//    auto lane_speed = GetLaneSpeedMph(lane_no);
-//    auto cost = CostSpeed(lane_speed, ideal_speed_mph_);
-//
-//    if (lane_speed_ptr)
-//        *lane_speed_ptr = lane_speed;
-//
-//    return cost;
-//}
-
-//double CarDriver::GetLaneSpeedMph(int lane_no) {
-//    auto closest_car = cost_->GetClosestCarInFront(lane_no);
-//    if (!closest_car)
-//        return ideal_speed_mph_;
-//
-//    const auto traffic_speed_mph_ = speed_mtr_per_sec_to_mph(closest_car->speed_mps());
-//    return traffic_speed_mph_ ;
-//}
-
 
 void CarDriver::KeepLaneState() {
     bool car_close = DriveWhileKeepingDistance();
     if (car_close)
         state_ = bind(&CarDriver::PrepareLaneChangeState, this);
 
+#ifdef _DEBUG_DATA
     last_debug_->desired_speed_mph = ideal_speed_mph_;
     last_debug_->desired_lane_no = desired_lane_no_;
     last_debug_->state = __FUNCTION__;
+#endif
 }
 
 
@@ -582,6 +508,7 @@ bool CarDriver::DriveWhileKeepingDistance() {
 
             speed_to_maintain_mph = speed_mtr_per_sec_to_mph(speed_mps);
 
+#ifdef _DEBUG_DATA
             stringstream ss;
             ss << "Car is close to car in front, with id: " << vehicle_in_front->car_id
                << " DS: " << dead_stop_distance
@@ -591,7 +518,7 @@ bool CarDriver::DriveWhileKeepingDistance() {
                << endl;
             cout << ss.str();
             last_debug_->debug_message = ss.str();
-
+#endif
             car_close = true;
         }
     }
@@ -601,8 +528,12 @@ bool CarDriver::DriveWhileKeepingDistance() {
     return car_close;
 }
 
+#ifdef _DEBUG_DATA
+
 void CarDriver::InitState() {
-//    int closest_lane = model_.car_d / 4;
+
+    // start of from a lane that has a car really close by as need to test lane change
+
     int closest_lane = -1;
     int closest_distance = 999999;
 
@@ -626,6 +557,8 @@ void CarDriver::InitState() {
         state_ = bind(&CarDriver::KeepLaneState, this);
     }
 }
+
+#endif
 
 bool CarDriver::TargetLaneFrontOk(int target_lane_no) {
     SpeedDistanceCostCalculator sd_calc(sensor_fusion_, model_);
@@ -658,7 +591,7 @@ bool CarDriver::TargetLaneBackOk(int target_lane_no) {
 
         // since we won't be going straight, we would be a little behind had we gone
         // directly
-        const auto our_speed_mps = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 0.75;
+        const auto our_speed_mps = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 0.5;
         our_s_after = model_.car_s + our_speed_mps;
 
         behind_ok = bv_s_after < our_s_after;

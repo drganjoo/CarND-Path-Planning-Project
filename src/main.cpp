@@ -136,6 +136,8 @@ vector<double> getFrenet(double x, double y, double theta) {
     return {frenet_s, frenet_d};
 }
 
+#ifdef _DEBUG_DATA
+
 void StartGraphThread() {
     gh.onConnection([](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
         std::cout << "Graph Hub Connected!!!" << std::endl;
@@ -149,25 +151,6 @@ void StartGraphThread() {
 
         auto msg = msgJson.dump();
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
-#ifdef _SEND_DUMMY
-        // for the time being just sent the last recorded list of points
-        ifstream dummy("output.json");
-        if (dummy) {
-//            json records;
-//            dummy >> records;
-//            for (auto &r : records) {
-//                string msg = r.dump();
-//                ws.send(msg.c_str(), msg.length(), uWS::OpCode::TEXT);
-//            }
-            json r;
-            dummy >> r;
-            auto msg = r.dump();
-            ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
-            dummy.close();
-        }
-#endif
 
         cout << "Worldmap sent" << endl;
         gh_socket = ws;
@@ -199,11 +182,10 @@ string GetLogFilename() {
     return ss.str();
 }
 
+#endif
+
 int main() {
     uWS::Hub h;
-
-    string log_filename = GetLogFilename();
-    ofstream log(log_filename);
 
     // Waypoint map to read from
     string map_file = "../data/highway_map.csv";
@@ -214,16 +196,18 @@ int main() {
         return -1;
     }
 
+#ifdef _DEBUG_DATA
     StartGraphThread();
+#endif
 
     // The max s value before wrapping around the track back to 0
     double max_s = 6945.554;
 
     CarDriver driver;
-    driver.set_ideal_speed(49.0);
-//    driver.set_desired_lane(2);
+    driver.set_ideal_speed(MAX_ALLOWED_SPEED_MPH_);
+    driver.set_desired_lane(1);
 
-    h.onMessage([&driver, &log](
+    h.onMessage([&driver](
             uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
             uWS::OpCode opCode) {
         // "42" at the start of the message means there's a websocket message event.
@@ -245,8 +229,9 @@ int main() {
                     driver.UpdateModel(j[1]);
                     auto path = driver.GetPath();
 
+#ifdef _DEBUG_DATA
                     SendDebugValues(driver);
-
+#endif
                     // response to the simulator
                     json msgJson;
                     msgJson["next_x"] = path[0];
@@ -254,8 +239,6 @@ int main() {
 
                     auto msg = "42[\"control\"," + msgJson.dump() + "]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
-                    log << j << endl;
                 }
             } else {
                 // Manual driving
@@ -285,7 +268,6 @@ int main() {
 
     h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code,
                            char *message, size_t length) {
-        ws.close();
         std::cout << "Disconnected" << std::endl;
     });
 
@@ -299,6 +281,8 @@ int main() {
     h.run();
 }
 
+
+#ifdef _DEBUG_DATA
 void SendDebugValues(const CarDriver &driver) {// debug values
     // save all debug packages in a file
     ofstream output("output.json");
@@ -316,3 +300,4 @@ void SendDebugValues(const CarDriver &driver) {// debug values
         gh_socket.send(debug_str.data(), debug_str.length(), uWS::TEXT);
     }
 }
+#endif

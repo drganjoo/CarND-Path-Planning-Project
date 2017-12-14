@@ -17,6 +17,9 @@ const auto CL_BEHIND_DISTANCE_SECS = 7.0;
 const auto CL_FRONT_DISTANCE_SECS = 1.0;
 const auto CL_FRONT_ABORT_SECS = 2.0;
 const auto CL_SLOW_DOWN_FACTOR = 0.75;      // there is no space in the target lane, slow down by this much factor to create some room
+const double MAX_ALLOWED_SPEED_MPH_ = 48.0;
+const double MAX_LANE_CHANGE_SPEED_MPH = 45.0;
+const double MAX_ACCELERATION = 18.0;      // 10m/s * 60 * 60 / 1000 / 1.60934
 
 using json = nlohmann::json;
 
@@ -25,7 +28,6 @@ public:
     CarDriver();
 
     void UpdateModel(json &x);
-    std::vector<double> GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed);
     std::array<std::vector<double>, 2> GetPath();
 
     void set_ideal_speed(double speed) {
@@ -36,50 +38,38 @@ public:
     }
 
 public:
+#ifdef _DEBUG_DATA
     std::unique_ptr<DebugValues> last_debug_;
-//    std::vector<DebugValues> debug_packets_;
-
-private:
     void InitState();
+#endif
+
+protected:
+    std::vector<double> GetPerPointSpeed(double cur_speed_mph, double required_speed_mph, int points_needed);
+
     void KeepLaneState();
     void PrepareLaneChangeState();
     void ChangeLaneState(int goto_lane_no, int best_lane_no);
 
-//    void DoState();
-    void FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last_last_pt, double *ref_yaw);
-//    double HowManyMetersTravelledIn20ms(double cur_speed_mph);
     std::vector<double> DriveAtSpeed(double speed_mph, int spline_distance_start = 30, int spline_distance_inc = 30);
-    tk::spline GetPathToFollow(int spline_distance_start, int spline_distance_inc);
-    bool CloseToCar(double speed);
-    std::vector<double> GenerateTrajectory(double cur_speed_mph, double required_speed_mph, const tk::spline &path_spline);
-    double GetMetersToStop(double speed_mph);
-    CartesianPoint TranslateXYToBodyFrame(const double x, const double y);
-    double GetLaneCosts(int current_lane, int intended_lane, int final_lane);
-//    VehicleSensed* GetClosestCarInFront(int lane_no);
 
-    double CostSpeed(double intended_speed, double target_speed);
-    double CostDrivingInCurrentLane(double *lane_speed_ptr);
+    void FigureOutCarOrigin(CartesianPoint *last_pt, CartesianPoint *last_last_pt, double *ref_yaw);
+    tk::spline GetPathToFollow(int spline_distance_start, int spline_distance_inc);
+    std::vector<double> GenerateTrajectory(double cur_speed_mph, double required_speed_mph, const tk::spline &path_spline);
+
     void FigureOutSpeedFromPrevious();
     bool DriveWhileKeepingDistance();
-
-//    double GetLaneSpeedMph(int lane_no);
 
     bool TargetLaneFrontOk(int target_lane_no);
     bool TargetLaneBackOk(int target_lane_no);
     bool EnoughDistanceInFront(int lane_no);
 
 private:
-    //std::unique_ptr<CarModel> model_;
     CarModel model_;
     json previous_path_x_;
-    //std::vector<double> previous_path_x_;
     json previous_path_y_;
-    double end_path_s_;
-    double end_path_d_;
     std::vector<VehicleSensed> sensor_fusion_;
     std::vector<double> next_x_vals_;
     std::vector<double> next_y_vals_;
-//    DrivingState state_;
     std::function<void()> state_;
     std::unique_ptr<CostCalculator> cost_;
 

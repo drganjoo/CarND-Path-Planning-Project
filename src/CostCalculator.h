@@ -9,8 +9,6 @@
 #include "CarModel.h"
 
 const double MAX_SPEED_MPH_ = 100;
-const double MAX_ALLOWED_SPEED_MPH_ = 49.5;
-const double MAX_LANE_CHANGE_SPEED_MPH = 45.0;
 
 class CostCalculator {
 public:
