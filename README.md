@@ -9,11 +9,38 @@ Self-Driving Car Engineer Nanodegree Program
 ## Simulator.
 Term3 Simulator which contains the Path Planning Project can be downloaded from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
 
-## Overview of classes
+## Point Generation
 
-**CarDriver** - Most of the code of driving is in here   
-**CostCalculator** - Cost calculation is in this class   
-**CarModel** - Structures defined to keeping Cartesian, Frenet points, Vehicle Sensed and our own car's estimated mathematical model.
+```CarDriver::GenerateTrajectory```
+
+Car's current speed is estimated by either using cur_speed_mph sent by the simulator or in case previous points are sent, then the difference between the last two points is considered as the speed of the car.
+
+All previous points sent by the simulator are used and more are added to complete 50 points. A spline is generated using the last two points of the previous set and then adding three more points, which are 30, 60, and 90 meters away from the car's current position. The spline is generated in the body frame of reference.
+
+A function ```GetPerPointSpeed``` is called to figure out at each of the 50 points, what should be the speed of the car. This function takes into account maximum acceleration allowed.
+
+In body frame of reference, 50 points are generated, which basically tell where the car would be at each 20ms interval starting from current x,y coordinate. The current x,y is considered as 0,0 and then each consecutive point is set at a distance, which is proportional to the speed of the car for that section. Speed is converted into meters per sec and then multiplied by 0.02 (20ms Δt) to figure out the distance car will travel in 20ms. Y coordinate is figured out by passing the X coordinate to the generated spline. 
+
+The points are eventually converted from body frame of reference to global x,y coordinate space.
+
+```
+    for (int i = 0; i < 50 - prev_size; i++) {
+
+        const auto distance_travelled = speed_mph_to_mtr_per_sec(speed_between_points) * 0.02;
+
+        x_from_origin += distance_travelled;
+        double y_from_origin = path_spline(x_from_origin);
+
+        // translate from car system to world
+        auto x_point = x_from_origin * cos(model_.ref_yaw) - y_from_origin * sin(model_.ref_yaw);
+        auto y_point = x_from_origin * sin(model_.ref_yaw) + y_from_origin * cos(model_.ref_yaw);
+        x_point += model_.ref_prev.x;
+        y_point += model_.ref_prev.y;
+
+        next_x_vals_.push_back(x_point);
+        next_y_vals_.push_back(y_point);
+    }
+```
 
 ## Jerk Avoidance
 
@@ -54,38 +81,11 @@ When a decision has been made to change lanes, distance to car in front (in the 
 
 *Shortcoming*: Idealling would have liked to implement MPC to correctly figure out where we would be and where the other car would exactly be and then see if a collision would occur or not.
 
-## Point Generation
+## Overview of classes
 
-```CarDriver::GenerateTrajectory```
-
-Car's current speed is estimated by either using cur_speed_mph sent by the simulator or in case previous points are sent, then the difference between the last two points is considered as the speed of the car.
-
-All previous points sent by the simulator are used and more are added to complete 50 points. A spline is generated using the last two points of the previous set and then adding three more points, which are 30, 60, and 90 meters away from the car's current position. The spline is generated in the body frame of reference.
-
-A function ```GetPerPointSpeed``` is called to figure out at each of the 50 points, what should be the speed of the car. This function takes into account maximum acceleration allowed.
-
-In body frame of reference, 50 points are generated, which basically tell where the car would be at each 20ms interval starting from current x,y coordinate. The current x,y is considered as 0,0 and then each consecutive point is set at a distance, which is proportional to the speed of the car for that section. Speed is converted into meters per sec and then multiplied by 0.02 (20ms Δt) to figure out the distance car will travel in 20ms. Y coordinate is figured out by passing the X coordinate to the generated spline. 
-
-The points are eventually converted from body frame of reference to global x,y coordinate space.
-
-```
-    for (int i = 0; i < 50 - prev_size; i++) {
-
-        const auto distance_travelled = speed_mph_to_mtr_per_sec(speed_between_points) * 0.02;
-
-        x_from_origin += distance_travelled;
-        double y_from_origin = path_spline(x_from_origin);
-
-        // translate from car system to world
-        auto x_point = x_from_origin * cos(model_.ref_yaw) - y_from_origin * sin(model_.ref_yaw);
-        auto y_point = x_from_origin * sin(model_.ref_yaw) + y_from_origin * cos(model_.ref_yaw);
-        x_point += model_.ref_prev.x;
-        y_point += model_.ref_prev.y;
-
-        next_x_vals_.push_back(x_point);
-        next_y_vals_.push_back(y_point);
-    }
-```
+**CarDriver** - Most of the code of driving is in here   
+**CostCalculator** - Cost calculation is in this class   
+**CarModel** - Structures defined to keeping Cartesian, Frenet points, Vehicle Sensed and our own car's estimated mathematical model.
 
 ## Cost Functions
 
