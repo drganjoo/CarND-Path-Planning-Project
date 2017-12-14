@@ -238,28 +238,41 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
 
         cout << "TL " << target_lane_no << ", CF distance is OK. " << distance_front << " required: " << req_distance_front << endl;
 
-        const auto req_distance_behind = speed_mph_to_mtr_per_sec(50.0) * 2;
+        bool behind_ok = true;
+        const auto SECONDS_DISTANCE = 5.0;
         const auto behind_vehicle = cost_->GetClosestCarBehind(target_lane_no);
-        double distance_behind;
 
-        if (behind_vehicle)
-            distance_behind = sd_calc.GetDistaneToCarMeters(behind_vehicle);
-        else
-            distance_behind = numeric_limits<double>::max();
+        double bv_s_after = 0;
+        double our_s_after = 0;
+        double bv_speed_mps = 0;
 
-        if (distance_behind < req_distance_behind) {
+        if (behind_vehicle) {
 
-            cout << "TL " << target_lane_no << ", CB is very close. " << distance_behind << " required: " << req_distance_behind << endl;
+            bv_speed_mps = behind_vehicle->speed_mps();
+            bv_s_after = behind_vehicle->s + bv_speed_mps * SECONDS_DISTANCE;
+            bv_s_after += 2; // length of the car is added
+
+            // since we won't be going straight, lets just assume half of our speed instead of full
+            const auto our_speed_mps = speed_mph_to_mtr_per_sec(model_.ref_speed_mph) * 0.5;
+            our_s_after = model_.car_s + our_speed_mps;
+
+            behind_ok = bv_s_after < our_s_after;
+        }
+
+        if (!behind_ok) {
+
+            cout << "TL " << target_lane_no << ", CB is very close. In short while it will be at car_s:"
+                 << bv_s_after << " we would be at car_s: " << our_s_after << endl;
 
             // wait for the car to pass us
-            const auto speed_for_waiting_mph = max(25.0, behind_vehicle->speed_mps() * 0.5);
-            auto cur_lane_speed = sd_calc.GetLaneSpeedMph(cur_lane_no);
-            auto driving_speed_mph = min(speed_for_waiting_mph, cur_lane_speed);
+            const auto cur_lane_speed = sd_calc.GetLaneSpeedMph(cur_lane_no);
+            const auto speed_for_waiting_mph = max(25.0, speed_mtr_per_sec_to_mph(bv_speed_mps) * 0.5);
+            const auto driving_speed_mph = min(speed_for_waiting_mph, cur_lane_speed);
 
             DriveAtSpeed(driving_speed_mph);
 
             cout << "TL " << target_lane_no << ", Waiting for car behind."
-                 << " Behind Speed: " << behind_vehicle->speed_mps()
+                 << " Behind Speed: " << bv_speed_mps
                  << " Wait Speed: " << speed_for_waiting_mph
                  << " CL Speed:" << cur_lane_speed
                  << " driving at: " << driving_speed_mph << endl;
@@ -272,8 +285,8 @@ void CarDriver::ChangeLaneState(int target_lane_no, int best_lane_no) {
         } else {
 
             cout << "TL " << target_lane_no << ": SAFE " << endl
-                 << "  Distance Behind: " << distance_behind
-                 << "  Required: " << req_distance_behind << endl;
+                 << "  Behind S After: " << bv_s_after
+                 << " Our S After: " << our_s_after << endl;
             cout << "  Distance Front: " << distance_front
                  << "  Required : " << req_distance_front << endl;
 

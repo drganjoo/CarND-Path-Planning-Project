@@ -6,11 +6,17 @@ You can download the Term3 Simulator which contains the Path Planning Project fr
 
 ## Driving States
 
+Although a FSM has been implemented but I am not happy with the way it has been defined. A lot of code had to be replicated in different states e.g. in "lane change" and "prepare for lane change" had to keep checking if the car in front had moved out
+
 ### Keep Lane State
 
-In this state the 
+Code defined in: ```void CarDriver::KeepLaneState()```
 
-###
+If there is no car in front, keep going at desired_speed. In case there is a car then change state to PrepareLaneChange, while mainting distance from the car in front. 
+
+### Prepare Lane Change State
+
+
 
 
 ## Code Implementation
