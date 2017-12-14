@@ -53,6 +53,7 @@ private:
 
     double CostSpeed(double intended_speed, double target_speed);
     double CostDrivingInCurrentLane(double *lane_speed_ptr);
+    void FigureOutSpeedFromPrevious();
 
 //    double GetLaneSpeedMph(int lane_no);
 

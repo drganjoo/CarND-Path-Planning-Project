@@ -41,7 +41,6 @@ void to_json(json& j, const DebugValues& dv){
     model_json["desiredSpeedMph"] = dv.desired_speed_mph;
     model_json["desiredLaneNo"] = dv.desired_lane_no;
 
-
     j["refYaw"] = dv.ref_yaw;
     j["splinePts"] = dv.spline_pts;
     j["splineAddonsFrenet"] = dv.spline_addons;
@@ -50,6 +49,7 @@ void to_json(json& j, const DebugValues& dv){
     j["nextPts"] = dv.next_pts;
     j["sensorFusion"] = dv.sensor_fusion;
     j["state"] = dv.state;
+    j["debugMessage"] = dv.debug_message;
 }
 
 void to_json(json &j, const VehicleSensed &v) {
