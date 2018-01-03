@@ -4,7 +4,7 @@ cmake_minimum_required (VERSION 3.5)
 
 add_definitions(-std=c++11)
 
-#add_definitions(-D_DEBUG_DATA)
+add_definitions(-D_DEBUG_DATA)
 
 set(CXX_FLAGS "-Wall")
 set(CMAKE_CXX_FLAGS, "${CXX_FLAGS}")

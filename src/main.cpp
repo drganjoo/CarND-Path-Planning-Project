@@ -148,6 +148,7 @@ void StartGraphThread() {
         msgJson["type"] = "worldmap";
         msgJson["worldmap_x"] = map->map_waypoints_x;
         msgJson["worldmap_y"] = map->map_waypoints_y;
+        msgJson["worldmap_s"] = map->map_waypoints_s;
 
         auto msg = msgJson.dump();
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
