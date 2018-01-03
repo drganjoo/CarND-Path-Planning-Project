@@ -1,0 +1,222 @@
+<head>
+    <link href="css/index.css" rel="stylesheet" type="text/css" >
+
+    <script>if (typeof module === 'object') {window.module = module; module = undefined;}</script>
+    <!-- <script type="text/javascript" src="jquery-3.2.1.js"></script> -->
+    <script type="text/javascript" src="vue.js"></script>
+    <script type="text/javascript" src="graph.js"></script>
+    <!-- <script>if (window.module) module = window.module;</script> -->
+
+    <style>
+        #model-wrapper {
+            width:250px;
+            float:left;
+            font-size:0.8em;
+            margin:0px;
+            padding-right:10px;
+        }
+
+        #xy-wrapper {
+            width:150px;
+            font-size:0.8em;
+            padding:0px;
+            border:1px solid white;
+            margin-bottom:10px;
+            margin-right:10px;
+            float:left;
+        }
+
+        #xy-wrapper li {
+            list-style: none;
+            padding:2px;
+        }
+
+        #xy-wrapper ul {
+            margin:0px;
+            padding:2px;
+        }
+
+        #model-wrapper li > div.label {
+            width:140px;
+            float:left;
+            text-align:right;
+            padding-right:5px;
+            overflow: scroll;
+            margin-right:10px;
+        }
+
+        #model-wrapper ul {
+            border:1px solid white;
+            margin:0px;
+            padding:2px;
+        }
+
+        #model-wrapper li {
+            border-bottom:1px solid white;
+            list-style: none;
+        }
+    
+        #model-wrapper li:last-child {
+            border:none;
+        }   
+
+        .heading {
+            background-color: lightgray;
+            padding: 3px;
+            text-align: center;
+            color: darkslategray;
+        }
+
+        .col1 {
+            width:60px; 
+            overflow:scroll;
+            border-right:1px solid white;
+            float:left;
+        }
+        .col2 {
+            width:70px; padding-left:2px; float:left;overflow:scroll
+        }
+
+        li {
+            list-style: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="graph-app">
+        <div style="float:left">
+            Server IP: <input v-model="serverIp" placeholder="127.0.0.1">
+        </div>
+
+        <button style="float:left" v-on:click="connect">Connect 4568</button>
+        <h1>Path Planner</h1>
+
+        <graph ref='frenetGraph'></graph>
+    
+        <!-- <select v-model="selectedMessage" size="11" style="width:250px; margin-right:10px; float:left">
+            <option 
+                v-for="msg of messages" 
+                v-bind:value="msg"
+                v-on:click="messageSelected"
+            >
+                {{ msg.text }}
+            </option>
+        </select> -->
+
+    
+        <div v-if="selectedMessage">
+            <div id="model-wrapper">
+                <div class='heading'>
+                    Car Model Details
+                </div>
+
+                <ul >
+                    <li v-for="p of ['s','d','x','y','yaw','desiredLaneNo','desiredSpeedMph','speedMph']"
+                        v-bind:value="p">
+                        <div class="label">
+                            {{ p }}
+                        </div>
+                        <div>
+                            {{ selectedMessage.model[p] }}
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div id="xy-wrapper">
+                <div class='heading'>
+                    Spline Points
+                </div>
+    
+                <ul style="width:140px; float:left">
+                    <li v-for="p of selectedMessage.splinePts"
+                        v-bind:value="p">
+                        <div class="col1">
+                            {{ parseInt(p[0]) }}
+                        </div>
+                        <div style="width:70px; padding-left:2px; float:left;overflow:scroll">
+                            {{ parseInt(p[1]) }}
+                        </div>
+                    </li>
+                </ul>
+
+                <button v-on:click="drawSpline()" style="clear:both">Draw Spline</button> 
+                <button v-on:click="drawSplinePts()" style="clear:both">Draw Spline Pts</button> 
+                
+            </div>
+
+            <div style="width:200px; float:left; font-size:0.8em; border: 1px solid white; margin:0px; padding:0px">
+            <div class='heading'>
+                    Reference
+            </div>
+            <ul style="width:180px; float:left; margin-left:0px; padding:0px">
+                <li>
+                    <div class="col1">
+                            Angle
+                    </div>
+                    <div class="col2">
+                            {{ selectedMessage.refYaw.angleRad }}
+                    </div>
+                </li>
+
+                <li>
+                        <div class="col1">
+                                Basis
+                        </div>
+                        <div style="width:70px; padding-left:2px; float:left;overflow:scroll">
+                                {{ selectedMessage.refYaw.basedOn }}
+                        </div>
+                </li>
+
+                <li>
+                        <div class="col1">
+                                Prev
+                        </div>
+                        <div style="width:90px; padding-left:2px; float:left;overflow:scroll">
+                                {{ parseInt(selectedMessage.refYaw.prev[0]) }} , 
+                                {{ parseInt(selectedMessage.refYaw.prev[1]) }} 
+                        </div>
+                </li>
+
+                <li>
+                        <div class="col1">
+                            2nd Prev
+                        </div>
+                        <div style="width:90px; padding-left:2px; float:left;overflow:scroll">
+                                {{ parseInt(selectedMessage.refYaw.prevPrev[0]) }} ,
+                                {{ parseInt(selectedMessage.refYaw.prevPrev[1]) }} 
+                        </div>
+                </li>
+
+                <li>
+                        <div class="col1">
+                            Prev Size
+                        </div>
+                        <div style="width:90px; padding-left:2px; float:left;overflow:scroll">
+                                {{ selectedMessage.previousPts.length }}
+                        </div>
+                </li>
+
+                <li>
+                    <div class="col1">
+                        Stae
+                    </div>
+                    <div style="width:90px; padding-left:2px; float:left;overflow:scroll">
+                            {{ selectedMessage.state }}
+                    </div>
+                </li>
+
+            </ul>
+            </div>
+
+            <div style="display:block;float:none">
+                Debug Message: {{ selectedMessage.debugMessage }}
+            </div>
+        </div>
+    </div>
+
+
+</body>
+
+<script type="text/javascript" src="index.js"></script>

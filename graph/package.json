@@ -1,0 +1,12 @@
+{
+  "name": "graph",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "./node_modules/electron/cli.js ."
+  },
+  "dependencies": {
+    "electron": "^1.7.9"
+  }
+}

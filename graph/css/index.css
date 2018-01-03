@@ -1,0 +1,46 @@
+:root {
+    --bg-color: #555555;
+}
+
+body {
+    background-color: var(--bg-color);
+    color:lightgray;
+    font-family: verdana;
+}
+
+h1 {
+    color: #FDBC40;
+    text-align: center;
+    font-size: 20px;
+}
+
+p {
+    font-family: verdana;
+    font-size: 20px;
+}
+
+.drawContainer {
+    background:yellow;
+    overflow:auto;
+}
+
+.drawingBoard {
+    /* background-color: var(--bg-color); */
+    margin-top:10px;
+    margin-bottom:10px;
+    background-color: white;
+    /* width: -webkit-calc(100%); */
+}
+
+/* button {
+    background-color: #5793DB;
+    font: inherit;
+    margin: 0; 
+    overflow: visible;
+    cursor: pointer;
+} */
+
+/* button[disabled],
+html input[disabled] {
+    cursor: default; 
+} */
